@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 const MAP_WIDTH = 1200;
-const MAP_HEIGHT = 900;
+const MAP_HEIGHT = 1500;
 const MAP_MIN_ZOOM = 0.5;
 const MAP_MAX_ZOOM = 4;
-const DEFAULT_ZOOM = 1;
+// The complete campus is visible on first load; controls retain close inspection.
+const DEFAULT_ZOOM = 0.78;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -23,63 +24,80 @@ const projectPoint = (lat, lng) => {
   };
 };
 
+// Campus plan traced from the supplied reference: IB and AS blocks sit either
+// side of the central pedestrian spine, with the auditorium and library below.
 const roads = [
-  { id: 'main-1', d: 'M 108 144 L 335 150 L 510 216 L 720 216 L 860 256 L 1100 250', type: 'main' },
-  { id: 'main-2', d: 'M 110 466 L 360 470 L 610 548 L 860 548 L 1075 520', type: 'main' },
-  { id: 'main-3', d: 'M 270 110 L 270 318 L 530 318 L 530 622 L 452 824', type: 'secondary' },
-  { id: 'main-4', d: 'M 686 110 L 686 420 L 916 420 L 916 780', type: 'secondary' },
-  { id: 'main-5', d: 'M 372 670 L 372 812 L 760 812 L 760 678', type: 'secondary' },
-  { id: 'minor-1', d: 'M 120 224 L 252 224 L 252 522', type: 'minor' },
-  { id: 'minor-2', d: 'M 530 400 L 676 400 L 676 628', type: 'minor' },
-  { id: 'minor-3', d: 'M 780 312 L 1018 312 L 1018 470', type: 'minor' },
-  { id: 'minor-4', d: 'M 874 650 L 1070 650', type: 'minor' },
-  { id: 'minor-5', d: 'M 210 698 L 360 698', type: 'minor' },
-  { id: 'minor-6', d: 'M 575 238 L 575 360', type: 'minor' },
+  { id: 'edge-left', d: 'M 80 0 L 118 900', type: 'main' }, { id: 'edge-right', d: 'M 1120 0 L 1150 900', type: 'main' },
+  { id: 'spine-left', d: 'M 390 120 L 400 840', type: 'secondary' }, { id: 'spine-right', d: 'M 780 120 L 805 840', type: 'secondary' },
+  { id: 'cross-1', d: 'M 120 330 L 1100 300', type: 'minor' }, { id: 'cross-2', d: 'M 130 510 L 1110 485', type: 'minor' },
+  { id: 'cross-3', d: 'M 140 675 L 1120 645', type: 'minor' }, { id: 'library-road', d: 'M 290 815 L 805 800', type: 'secondary' },
+  { id: 'south-road', d: 'M 80 1040 L 1140 1010 M 90 1140 L 800 1120 M 805 1305 L 1135 1285', type: 'main' },
+  { id: 'south-spine', d: 'M 480 1010 L 490 1360 M 790 1010 L 810 1360', type: 'secondary' },
+  { id: 'walk-1', d: 'M 345 235 L 435 235 M 750 225 L 835 225 M 350 420 L 440 420 M 760 410 L 850 410 M 355 600 L 445 600 M 770 590 L 860 590', type: 'walk' },
 ];
 
 const buildings = [
-  { id: 'b1', x: 70, y: 80, width: 162, height: 104, label: 'Gate' },
-  { id: 'b2', x: 238, y: 70, width: 156, height: 118, label: 'School' },
-  { id: 'b3', x: 520, y: 98, width: 146, height: 94, label: 'Office' },
-  { id: 'b4', x: 864, y: 92, width: 190, height: 128, label: 'Plant' },
-  { id: 'b5', x: 96, y: 260, width: 176, height: 122, label: 'Clinic' },
-  { id: 'b6', x: 296, y: 332, width: 148, height: 116, label: 'Block A' },
-  { id: 'b7', x: 544, y: 332, width: 168, height: 120, label: 'Block B' },
-  { id: 'b8', x: 772, y: 330, width: 200, height: 118, label: 'Storage' },
-  { id: 'b9', x: 88, y: 604, width: 170, height: 118, label: 'Garden' },
-  { id: 'b10', x: 292, y: 642, width: 170, height: 124, label: 'Admin' },
-  { id: 'b11', x: 526, y: 664, width: 170, height: 116, label: 'Works' },
-  { id: 'b12', x: 772, y: 650, width: 220, height: 118, label: 'Yard' },
-  { id: 'b13', x: 214, y: 175, width: 72, height: 42, label: '' },
-  { id: 'b14', x: 634, y: 462, width: 82, height: 52, label: '' },
-  { id: 'b15', x: 1028, y: 620, width: 80, height: 46, label: '' },
-  { id: 'b16', x: 1012, y: 740, width: 86, height: 52, label: '' },
-  { id: 'b17', x: 360, y: 500, width: 82, height: 52, label: '' },
-  { id: 'b18', x: 870, y: 520, width: 80, height: 52, label: '' },
+  { id: 'northwest', d: 'M 170 72 H 478 V 105 H 465 V 184 H 178 V 120 H 165 Z' },
+  { id: 'northeast', d: 'M 640 60 H 990 V 182 H 820 V 170 H 645 Z' },
+  { id: 'ib-1', x: 185, y: 258, width: 175, height: 48 }, { id: 'ib-2', x: 182, y: 340, width: 182, height: 50 },
+  { id: 'ib-3', x: 190, y: 450, width: 185, height: 48 }, { id: 'ib-4', x: 195, y: 530, width: 170, height: 46 },
+  { id: 'ib-5', x: 205, y: 650, width: 165, height: 48 }, { id: 'ib-6', x: 210, y: 730, width: 170, height: 46 },
+  { id: 'ib-east-1', x: 415, y: 248, width: 125, height: 48 }, { id: 'ib-east-2', x: 420, y: 320, width: 120, height: 74 },
+  { id: 'ib-east-3', x: 430, y: 470, width: 116, height: 82 }, { id: 'ib-east-4', x: 430, y: 640, width: 118, height: 85 },
+  { id: 'as-1', x: 675, y: 242, width: 140, height: 45 }, { id: 'as-2', x: 840, y: 236, width: 175, height: 50 },
+  { id: 'as-3', x: 680, y: 325, width: 130, height: 52 }, { id: 'as-4', x: 845, y: 318, width: 175, height: 50 },
+  { id: 'as-5', x: 690, y: 450, width: 135, height: 50 }, { id: 'as-6', x: 845, y: 445, width: 180, height: 50 },
+  { id: 'as-7', x: 700, y: 625, width: 135, height: 55 }, { id: 'as-8', x: 850, y: 615, width: 185, height: 54 },
+  { id: 'as-9', x: 710, y: 720, width: 130, height: 54 }, { id: 'as-10', x: 850, y: 710, width: 185, height: 52 },
+  { id: 'auditorium', d: 'M 535 620 H 575 V 595 H 640 V 620 H 680 V 770 H 535 Z', type: 'landmark' },
+  { id: 'auditorium-left', x: 440, y: 735, width: 105, height: 55, type: 'accent' }, { id: 'auditorium-right', x: 680, y: 735, width: 110, height: 55, type: 'accent' },
+  { id: 'library', x: 430, y: 820, width: 330, height: 92, type: 'library' },
+  { id: 'lab-a', x: 470, y: 296, width: 48, height: 34, type: 'service' }, { id: 'lab-b', x: 665, y: 286, width: 50, height: 34, type: 'service' },
+  { id: 'lab-c', x: 475, y: 535, width: 48, height: 34, type: 'service' }, { id: 'lab-d', x: 670, y: 530, width: 48, height: 35, type: 'service' },
+  // Continuation south of the library, matching the supplied hostel/sports plan.
+  { id: 'parking', x: 425, y: 950, width: 145, height: 62, type: 'parking' },
+  { id: 'medical', x: 175, y: 1085, width: 120, height: 46, type: 'small-building' },
+  { id: 'narmadha', d: 'M 180 1170 H 340 V 1190 H 360 V 1240 H 335 V 1270 H 185 V 1245 H 165 V 1190 H 180 Z', type: 'hostel' },
+  { id: 'ganga', d: 'M 380 1180 H 525 V 1165 H 565 V 1210 H 540 V 1270 H 385 V 1240 H 365 V 1200 H 380 Z', type: 'hostel' },
+  { id: 'yamuna', d: 'M 715 1170 H 875 V 1190 H 905 V 1245 H 885 V 1270 H 730 V 1240 H 710 Z', type: 'hostel' },
+  { id: 'kaveri', d: 'M 255 1300 H 430 V 1275 H 465 V 1340 H 420 V 1355 H 250 Z', type: 'hostel' },
+  { id: 'bhavani', d: 'M 690 1295 H 850 V 1275 H 900 V 1345 H 875 V 1360 H 690 Z', type: 'hostel' },
+  { id: 'girls-mess', d: 'M 535 1260 H 650 V 1280 H 680 V 1350 H 515 V 1280 H 535 Z', type: 'mess' },
+  { id: 'basketball-left', x: 535, y: 1165, width: 45, height: 115, type: 'court' },
+  { id: 'basketball-mid', x: 595, y: 1160, width: 70, height: 125, type: 'court' },
+  { id: 'basketball-right', x: 680, y: 1165, width: 45, height: 115, type: 'court' },
+  { id: 'cafeteria', d: 'M 880 1080 H 1085 V 1105 H 1110 V 1170 H 1055 V 1190 H 915 V 1170 H 860 V 1120 H 880 Z', type: 'cafeteria' },
+  { id: 'court-1', x: 850, y: 1200, width: 65, height: 95, type: 'sports-court' },
+  { id: 'court-2', x: 935, y: 1200, width: 70, height: 95, type: 'sports-court' },
+  { id: 'court-3', x: 1025, y: 1200, width: 85, height: 95, type: 'sports-court' },
+  { id: 'playground', x: 850, y: 1320, width: 260, height: 150, type: 'playground' },
 ];
 
 const drainagePaths = [
-  { id: 'd1', d: 'M 206 242 L 356 242 L 426 298 L 612 298 L 714 378', status: 'good' },
-  { id: 'd2', d: 'M 210 468 L 344 468 L 344 618 L 500 618 L 544 714', status: 'maintenance' },
-  { id: 'd3', d: 'M 420 520 L 612 520 L 612 430 L 822 430', status: 'blocked' },
-  { id: 'd4', d: 'M 704 474 L 704 690 L 932 690', status: 'critical' },
-  { id: 'd5', d: 'M 870 232 L 988 232 L 988 430', status: 'good' },
-  { id: 'd6', d: 'M 180 720 L 258 720 L 258 790', status: 'good' },
+  { id: 'd1', d: 'M 395 170 L 395 760 M 795 170 L 795 760', status: 'good' },
+  { id: 'd2', d: 'M 155 510 L 1080 485', status: 'maintenance' },
+  { id: 'd3', d: 'M 400 645 L 800 645', status: 'blocked' },
 ];
 
 const mapLabels = [
-  { id: 'lbl-1', x: 118, y: 440, label: 'Main Gate' },
-  { id: 'lbl-2', x: 336, y: 214, label: 'South Road' },
-  { id: 'lbl-3', x: 600, y: 282, label: 'Overflow Box' },
-  { id: 'lbl-4', x: 824, y: 572, label: 'Pump Station' },
-  { id: 'lbl-5', x: 330, y: 772, label: 'Stormwater Tank' },
-  { id: 'lbl-6', x: 900, y: 772, label: 'Outlet' },
-  { id: 'lbl-7', x: 680, y: 110, label: 'Main Gate' },
-  { id: 'lbl-8', x: 1042, y: 188, label: 'Water Tank' },
-  { id: 'lbl-9', x: 210, y: 112, label: 'School' },
-  { id: 'lbl-10', x: 1052, y: 244, label: 'Service' },
-  { id: 'lbl-11', x: 1048, y: 338, label: 'Workshop' },
-  { id: 'lbl-12', x: 300, y: 604, label: 'Clinic' },
+  { id: 'special', x: 785, y: 130, label: 'Special\nLabs', kind: 'purple' },
+  { id: 'ib', x: 330, y: 500, label: 'IB Block', kind: 'orange' },
+  { id: 'as', x: 835, y: 500, label: 'AS Block', kind: 'orange' },
+  { id: 'auditorium', x: 605, y: 770, label: 'Main\nAuditorium', kind: 'purple' },
+  { id: 'library', x: 595, y: 875, label: 'Library', kind: 'red' },
+  { id: 'parking', x: 500, y: 982, label: 'Parking\nlot', kind: 'blue' },
+  { id: 'medical', x: 235, y: 1080, label: 'Medical\nCentre', kind: 'purple' },
+  { id: 'narmadha', x: 245, y: 1220, label: 'Narmadha\nHostel', kind: 'red' },
+  { id: 'ganga', x: 465, y: 1225, label: 'Ganga\nHostel', kind: 'purple' },
+  { id: 'yamuna', x: 795, y: 1225, label: 'Yamuna\nHostel', kind: 'green' },
+  { id: 'kaveri', x: 335, y: 1340, label: 'Kaveri\nHostel', kind: 'orange' },
+  { id: 'bhavani', x: 790, y: 1340, label: 'Bhavani\nHostel', kind: 'purple' },
+  { id: 'girls-mess', x: 600, y: 1340, label: 'Girls\nMess', kind: 'red' },
+  { id: 'basketball', x: 630, y: 1210, label: 'Basket\nBall\nCourt', kind: 'blue' },
+  { id: 'volleyball', x: 880, y: 1245, label: 'Volley\nBall\nCourt', kind: 'purple' },
+  { id: 'tennis', x: 1065, y: 1245, label: 'Tennis\nCourts', kind: 'red' },
+  { id: 'cafeteria', x: 980, y: 1125, label: 'Cafeteria', kind: 'green' },
+  { id: 'playground', x: 980, y: 1400, label: 'Empty\nPlayground', kind: 'purple' },
 ];
 
 const getMarkerClass = (priority, status) => {
@@ -97,7 +115,6 @@ export default function DrainageMap({ complaints = [], infrastructure = [], onSe
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [priorityFilter, setPriorityFilter] = useState('ALL');
   const [selectedMarkerId, setSelectedMarkerId] = useState(null);
-  const [selectedLocation, setSelectedLocation] = useState(null);
   const [layers, setLayers] = useState({
     roads: true,
     buildings: true,
@@ -108,7 +125,7 @@ export default function DrainageMap({ complaints = [], infrastructure = [], onSe
   });
   const [showLayersPanel, setShowLayersPanel] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [view, setView] = useState({ x: 0, y: 0, zoom: 1 });
+  const [view, setView] = useState({ x: 0, y: 0, zoom: DEFAULT_ZOOM });
 
   const visibleComplaints = useMemo(() => {
     return complaints.filter((item) => {
@@ -252,11 +269,7 @@ export default function DrainageMap({ complaints = [], infrastructure = [], onSe
     if (!viewport) return;
     const width = viewport.clientWidth;
     const height = viewport.clientHeight;
-    setView({
-      x: width / 2 - MAP_WIDTH / 2,
-      y: height / 2 - MAP_HEIGHT / 2,
-      zoom: DEFAULT_ZOOM,
-    });
+    setView(clampView(DEFAULT_ZOOM, width / 2 - (MAP_WIDTH * DEFAULT_ZOOM) / 2, height / 2 - (MAP_HEIGHT * DEFAULT_ZOOM) / 2));
   };
 
   const handleFullscreen = async () => {
@@ -286,11 +299,9 @@ export default function DrainageMap({ complaints = [], infrastructure = [], onSe
 
   const handleMapClick = (event) => {
     if (!viewportRef.current) return;
-    const rect = viewportRef.current.getBoundingClientRect();
-    const x = (event.clientX - rect.left - view.x) / view.zoom;
-    const y = (event.clientY - rect.top - view.y) / view.zoom;
-
-    setSelectedLocation({ x: Math.round(x), y: Math.round(y) });
+    // A plain map click should only clear a selected issue; it must not expose
+    // internal canvas X/Y coordinates to the user.
+    setSelectedMarkerId(null);
   };
 
   const handleSearchSelect = (point) => {
@@ -372,7 +383,7 @@ export default function DrainageMap({ complaints = [], infrastructure = [], onSe
             }}
           >
             <svg className="custom-map-svg" viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`} preserveAspectRatio="xMidYMid meet">
-              <path d="M 40 120 L 160 80 L 330 100 L 420 60 L 610 90 L 760 130 L 980 110 L 1160 160 L 1160 770 L 950 840 L 760 820 L 620 700 L 390 760 L 180 690 L 70 580 L 40 120 Z" className="map-boundary" />
+              <rect x="78" y="0" width="1070" height="1500" className="map-boundary" />
 
               {layers.roads && roads.map((road) => (
                 <path key={road.id} d={road.d} className={`map-road ${road.type}`} />
@@ -380,10 +391,11 @@ export default function DrainageMap({ complaints = [], infrastructure = [], onSe
 
               {layers.buildings && buildings.map((building) => (
                 <g key={building.id}>
-                  <rect x={building.x} y={building.y} width={building.width} height={building.height} className="map-building" rx="6" />
-                  <text x={building.x + building.width / 2} y={building.y + building.height / 2 + 4} textAnchor="middle" className="map-building-label">
-                    {building.label}
-                  </text>
+                  {building.d ? (
+                    <path d={building.d} className={`map-building ${building.type || ''}`} />
+                  ) : (
+                    <rect x={building.x} y={building.y} width={building.width} height={building.height} className={`map-building ${building.type || ''}`} />
+                  )}
                 </g>
               ))}
 
@@ -392,21 +404,21 @@ export default function DrainageMap({ complaints = [], infrastructure = [], onSe
               ))}
 
               {layers.labels && mapLabels.map((label) => (
-                <g key={label.id}>
-                  <circle cx={label.x} cy={label.y} r="4" className="map-label-dot" />
-                  <text x={label.x + 8} y={label.y + 4} className="map-label-text">{label.label}</text>
+                <g key={label.id} className={`map-campus-label ${label.kind || ''}`}>
+                  <text x={label.x} y={label.y} textAnchor="middle" className="map-label-text">
+                    {label.label.split('\n').map((line, index) => <tspan key={line} x={label.x} dy={index === 0 ? 0 : 19}>{line}</tspan>)}
+                  </text>
                 </g>
               ))}
+              {layers.labels && <>
+                <g className="map-landmark-icon lab-icon" transform="translate(820 150)"><circle r="24" /><path d="M-10 -8h20v18h-20zM-5 -13h10M-6 1h12" /></g>
+                <g className="map-landmark-icon lab-icon" transform="translate(470 665)"><circle r="24" /><path d="M-10 -8h20v18h-20zM-5 -13h10M-6 1h12" /></g>
+                <g className="map-landmark-icon library-icon" transform="translate(595 850)"><circle r="25" /><path d="M-12 10h24M-9 8V-5M0 8V-5M9 8V-5M-14 -5L0-13L14-5" /></g>
+                <g className="map-landmark-icon hostel-icon" transform="translate(245 1240)"><circle r="24" /><path d="M-13 5h26M-10 5v-10h20v10M-8 0h16" /></g>
+                <g className="map-landmark-icon hostel-icon" transform="translate(420 1225)"><circle r="24" /><path d="M-13 5h26M-10 5v-10h20v10M-8 0h16" /></g>
+                <g className="map-landmark-icon cafeteria-icon" transform="translate(980 1155)"><circle r="24" /><path d="M-5-12v24M4-12v10M9-12v10M4-2h5M-10-12v9c0 6 7 6 7 0v-9" /></g>
+              </>}
             </svg>
-
-            {selectedLocation && (
-              <div className="map-selected-location" style={{ left: selectedLocation.x, top: selectedLocation.y }}>
-                <strong>Selected Location</strong>
-                <span>X: {selectedLocation.x}</span>
-                <span>Y: {selectedLocation.y}</span>
-                <button type="button">Report Issue Here</button>
-              </div>
-            )}
 
             {allPoints.map((point) => (
               <button
@@ -439,16 +451,6 @@ export default function DrainageMap({ complaints = [], infrastructure = [], onSe
           </div>
         </div>
 
-        <div className="map-legend-box">
-          <h4>Map Legend</h4>
-          <div className="legend-row"><span className="legend-dot red" /> Critical Issue</div>
-          <div className="legend-row"><span className="legend-dot orange" /> High Priority</div>
-          <div className="legend-row"><span className="legend-dot yellow" /> Pending</div>
-          <div className="legend-row"><span className="legend-dot blue" /> Assigned</div>
-          <div className="legend-row"><span className="legend-dot green" /> Resolved</div>
-          <div className="legend-row"><span className="legend-line drain" /> Main Drain</div>
-          <div className="legend-row"><span className="legend-line road" /> Main Road</div>
-        </div>
       </div>
 
       {filteredSearchResults.length > 0 && (

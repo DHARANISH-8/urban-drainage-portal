@@ -136,13 +136,21 @@ export default function ReportIssue({ currentUser, onSubmitSuccess }) {
 
   const handlePhotoUpload = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData((prev) => ({ ...prev, photoUrl: reader.result }));
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setErrorMsg('Please upload an image file (JPG, PNG, GIF, WEBP, BMP, or AVIF).');
+      setFormData((prev) => ({ ...prev, photoUrl: '' }));
+      e.target.value = '';
+      return;
     }
+
+    setErrorMsg('');
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setFormData((prev) => ({ ...prev, photoUrl: reader.result }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSubmit = async (e) => {
@@ -252,6 +260,9 @@ export default function ReportIssue({ currentUser, onSubmitSuccess }) {
             <button type="button" className={`location-tab-btn ${locationMode === 'MAP_PICKER' ? 'active' : ''}`} onClick={() => setLocationMode('MAP_PICKER')}>
               🗺️ Select on Custom Map
             </button>
+            <button type="button" className={`location-tab-btn ${locationMode === 'MANUAL' ? 'active' : ''}`} onClick={() => setLocationMode('MANUAL')}>
+              Enter Location Manually
+            </button>
           </div>
 
           {locationMode === 'CURRENT' && (
@@ -285,14 +296,20 @@ export default function ReportIssue({ currentUser, onSubmitSuccess }) {
             </div>
           )}
 
+          {locationMode === 'MANUAL' && (
+            <div className="location-box manual-location-box">
+              <p className="hint">Enter the latitude, longitude, and nearest landmark or street address below.</p>
+            </div>
+          )}
+
           <div className="form-row grid-3 location-inputs">
             <div className="form-group">
               <label>Latitude</label>
-              <input type="number" step="any" value={formData.latitude} readOnly />
+              <input type="number" step="any" min="-90" max="90" value={formData.latitude} readOnly={locationMode !== 'MANUAL'} required onChange={(e) => setFormData((prev) => ({ ...prev, latitude: e.target.value === '' ? '' : Number(e.target.value) }))} />
             </div>
             <div className="form-group">
               <label>Longitude</label>
-              <input type="number" step="any" value={formData.longitude} readOnly />
+              <input type="number" step="any" min="-180" max="180" value={formData.longitude} readOnly={locationMode !== 'MANUAL'} required onChange={(e) => setFormData((prev) => ({ ...prev, longitude: e.target.value === '' ? '' : Number(e.target.value) }))} />
             </div>
             <div className="form-group">
               <label>Street Address / Landmark</label>
@@ -303,7 +320,8 @@ export default function ReportIssue({ currentUser, onSubmitSuccess }) {
 
         <div className="form-group">
           <label htmlFor="photo">Upload Photograph (Optional)</label>
-          <input type="file" id="photo" accept="image/*" onChange={handlePhotoUpload} />
+          <input type="file" id="photo" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,image/avif,.jpg,.jpeg,.png,.gif,.webp,.bmp,.avif" onChange={handlePhotoUpload} />
+          <p className="hint">Accepted formats: JPG, PNG, GIF, WEBP, BMP, and AVIF.</p>
           {formData.photoUrl && (
             <div className="photo-preview-box">
               <span>Photo Attached:</span>
