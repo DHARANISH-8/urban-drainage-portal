@@ -461,7 +461,7 @@ export default function DrainageMap({
 
               <div className="info-row">
                 <span className="info-label">Location:</span>
-                <span className="info-value">{selectedDrain.location || selectedDrain.address || 'Campus Main Drain'}</span>
+                <span className="info-value">{selectedDrain.location || selectedDrain.address || 'Location not recorded'}</span>
               </div>
 
               <div className="info-row">

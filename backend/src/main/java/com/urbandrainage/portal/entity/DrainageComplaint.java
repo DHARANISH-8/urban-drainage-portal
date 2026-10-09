@@ -28,15 +28,13 @@ public class DrainageComplaint {
     @Column(length = 2000)
     private String description;
 
-    @Column(nullable = false)
     private Double latitude;
 
-    @Column(nullable = false)
     private Double longitude;
 
     private String address;
 
-    @Column(length = 5000)
+    @Column(columnDefinition = "TEXT")
     private String photoUrl;
 
     @Column(nullable = false)
@@ -54,6 +52,12 @@ public class DrainageComplaint {
 
     @Column(length = 2000)
     private String maintenanceNotes;
+
+    @Column(length = 2000)
+    private String workProgress;
+
+    @Column(length = 2000)
+    private String resolutionDetails;
 
     private Integer rating; // 1 to 5 stars rating given by citizen
 
@@ -135,6 +139,12 @@ public class DrainageComplaint {
 
     public String getMaintenanceNotes() { return maintenanceNotes; }
     public void setMaintenanceNotes(String maintenanceNotes) { this.maintenanceNotes = maintenanceNotes; }
+
+    public String getWorkProgress() { return workProgress; }
+    public void setWorkProgress(String workProgress) { this.workProgress = workProgress; }
+
+    public String getResolutionDetails() { return resolutionDetails; }
+    public void setResolutionDetails(String resolutionDetails) { this.resolutionDetails = resolutionDetails; }
 
     public Integer getRating() { return rating; }
     public void setRating(Integer rating) { this.rating = rating; }

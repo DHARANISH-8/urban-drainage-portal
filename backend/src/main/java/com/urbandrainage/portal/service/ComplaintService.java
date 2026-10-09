@@ -7,6 +7,8 @@ import com.urbandrainage.portal.entity.DrainageComplaint;
 import com.urbandrainage.portal.entity.DrainageInfrastructure;
 import com.urbandrainage.portal.repository.ComplaintRepository;
 import com.urbandrainage.portal.repository.InfrastructureRepository;
+import com.urbandrainage.portal.repository.UserRepository;
+import com.urbandrainage.portal.entity.User;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -19,13 +21,16 @@ public class ComplaintService {
     private final ComplaintRepository complaintRepository;
     private final InfrastructureRepository infrastructureRepository;
     private final NotificationService notificationService;
+    private final UserRepository userRepository;
 
     public ComplaintService(ComplaintRepository complaintRepository,
                             InfrastructureRepository infrastructureRepository,
-                            NotificationService notificationService) {
+                            NotificationService notificationService,
+                            UserRepository userRepository) {
         this.complaintRepository = complaintRepository;
         this.infrastructureRepository = infrastructureRepository;
         this.notificationService = notificationService;
+        this.userRepository = userRepository;
     }
 
     public DrainageComplaint createComplaint(ComplaintRequestDTO dto) {
@@ -34,22 +39,18 @@ public class ComplaintService {
 
     public DrainageComplaint createComplaint(ComplaintRequestDTO dto, Long drainId) {
         DrainageComplaint complaint = new DrainageComplaint();
-        complaint.setUserId(dto.userId() != null ? dto.userId() : 1L);
-        complaint.setUserName(dto.userName() != null ? dto.userName() : "Citizen User");
+        complaint.setUserId(dto.userId());
+        complaint.setUserName(dto.userName());
         complaint.setIssueType(dto.issueType());
         complaint.setDescription(dto.description());
         if (drainId != null) {
             DrainageInfrastructure drain = infrastructureRepository.findById(drainId)
                     .orElseThrow(() -> new IllegalArgumentException("Drain not found with ID: " + drainId));
             complaint.setDrain(drain);
-            complaint.setLatitude(drain.getLatitude());
-            complaint.setLongitude(drain.getLongitude());
-            complaint.setAddress(drain.getAddress() != null ? drain.getAddress() : drain.getName());
-        } else {
-            complaint.setLatitude(dto.latitude());
-            complaint.setLongitude(dto.longitude());
-            complaint.setAddress(dto.address() != null ? dto.address() : "Reported Location");
         }
+        complaint.setLatitude(dto.latitude());
+        complaint.setLongitude(dto.longitude());
+        complaint.setAddress(dto.address());
         complaint.setPhotoUrl(dto.photoUrl());
         complaint.setPriority(autoMapPriority(dto.issueType(), dto.priority()));
         complaint.setStatus("SUBMITTED");
@@ -83,12 +84,15 @@ public class ComplaintService {
         return complaintRepository.findById(id);
     }
 
-    public DrainageComplaint assignStaff(Long complaintId, Long staffId, String staffName) {
+    public DrainageComplaint assignStaff(Long complaintId, Long staffId) {
         DrainageComplaint complaint = complaintRepository.findById(complaintId)
                 .orElseThrow(() -> new IllegalArgumentException("Complaint not found with ID: " + complaintId));
 
+        User staff = userRepository.findById(staffId)
+                .filter(user -> "STAFF".equalsIgnoreCase(user.getRole()))
+                .orElseThrow(() -> new IllegalArgumentException("The selected user is not an active staff member."));
         complaint.setAssignedStaffId(staffId);
-        complaint.setAssignedStaffName(staffName != null ? staffName : "Staff Member");
+        complaint.setAssignedStaffName(staff.getName());
         if ("SUBMITTED".equals(complaint.getStatus()) || "UNDER_REVIEW".equals(complaint.getStatus())) {
             complaint.setStatus("ASSIGNED");
         }
@@ -111,13 +115,33 @@ public class ComplaintService {
                 .orElseThrow(() -> new IllegalArgumentException("Complaint not found with ID: " + complaintId));
 
         String oldStatus = complaint.getStatus();
-        complaint.setStatus(dto.status().toUpperCase());
+        String nextStatus = dto.status().toUpperCase();
+        if (!List.of("SUBMITTED", "UNDER_REVIEW", "ASSIGNED", "IN_PROGRESS", "RESOLVED", "REJECTED").contains(nextStatus)) {
+            throw new IllegalArgumentException("Unsupported complaint status: " + dto.status());
+        }
+        if (List.of("ASSIGNED", "IN_PROGRESS", "RESOLVED").contains(nextStatus)
+                && complaint.getAssignedStaffId() == null) {
+            throw new IllegalArgumentException("Assign a staff member before advancing this complaint to " + nextStatus + ".");
+        }
+        if (List.of("ASSIGNED", "IN_PROGRESS", "RESOLVED").contains(nextStatus)
+                && userRepository.findById(complaint.getAssignedStaffId())
+                .filter(user -> "STAFF".equalsIgnoreCase(user.getRole()))
+                .isEmpty()) {
+            throw new IllegalArgumentException("A valid staff assignment is required before advancing this complaint.");
+        }
+        complaint.setStatus(nextStatus);
 
         if (dto.inspectionNotes() != null && !dto.inspectionNotes().isBlank()) {
             complaint.setInspectionNotes(dto.inspectionNotes());
         }
         if (dto.maintenanceNotes() != null && !dto.maintenanceNotes().isBlank()) {
             complaint.setMaintenanceNotes(dto.maintenanceNotes());
+        }
+        if (dto.workProgress() != null && !dto.workProgress().isBlank()) {
+            complaint.setWorkProgress(dto.workProgress());
+        }
+        if (dto.resolutionDetails() != null && !dto.resolutionDetails().isBlank()) {
+            complaint.setResolutionDetails(dto.resolutionDetails());
         }
 
         DrainageComplaint updated = complaintRepository.save(complaint);

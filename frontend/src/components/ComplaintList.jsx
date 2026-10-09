@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export default function ComplaintList({ complaints = [], staffList = [], currentRole, currentUser, onSelectComplaint, filterMode }) {
+export default function ComplaintList({ complaints = [], currentUser, onSelectComplaint, filterMode }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [priorityFilter, setPriorityFilter] = useState('ALL');
@@ -106,9 +106,11 @@ export default function ComplaintList({ complaints = [], staffList = [], current
                     <span className="address-cell" title={c.address}>📍 {c.address}</span>
                   </td>
                   <td>
-                    <span className="staff-cell">{c.assignedStaffName || 'Unassigned'}</span>
+                    <span className="staff-cell">
+                      {c.assignedStaffName || (c.assignedStaffId != null ? `Staff ID #${c.assignedStaffId}` : 'Unassigned')}
+                    </span>
                   </td>
-                  <td>{new Date(c.createdAt).toLocaleDateString()}</td>
+                  <td>{c.createdAt ? new Date(c.createdAt).toLocaleString() : 'Not provided'}</td>
                   <td>
                     <button
                       type="button"

@@ -7,5 +7,11 @@ public record StatusUpdateDTO(
     String status,
 
     String inspectionNotes,
-    String maintenanceNotes
-) {}
+    String maintenanceNotes,
+    String workProgress,
+    String resolutionDetails
+) {
+    public StatusUpdateDTO(String status, String inspectionNotes, String maintenanceNotes) {
+        this(status, inspectionNotes, maintenanceNotes, null, null);
+    }
+}

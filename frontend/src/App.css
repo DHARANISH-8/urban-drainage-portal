@@ -1409,6 +1409,20 @@ body {
   margin-top: 0.5rem;
 }
 
+.remove-photo-btn {
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.remove-photo-btn:hover {
+  color: var(--text-main);
+  border-color: var(--accent-blue);
+}
+
 .photo-thumb {
   width: 70px;
   height: 70px;
@@ -3817,6 +3831,74 @@ button { -webkit-tap-highlight-color: transparent; }
 .custom-map-picker .picker-area { fill: #d4e4df; }
 .empty-state { color: var(--text-muted); }
 .empty-icon { filter: grayscale(0.6); }
+
+.login-page {
+  background-color: #0b1f33;
+  background-image:
+    radial-gradient(circle at 16% 16%, rgba(68, 195, 186, 0.18), transparent 32%),
+    radial-gradient(circle at 88% 82%, rgba(45, 101, 143, 0.3), transparent 36%);
+}
+
+.login-visual {
+  min-width: 0;
+}
+
+.login-card {
+  color: #173047;
+  background: #ffffff;
+  border-color: #c5d2dc;
+  box-shadow: 0 24px 64px rgba(3, 16, 29, 0.28);
+}
+
+.login-brand h1,
+.login-card > h2,
+.login-form label {
+  color: #173047;
+}
+
+.login-brand p,
+.login-intro,
+.login-mode-switch {
+  color: #52687a;
+}
+
+.login-role-options {
+  border-color: #cfdae4;
+  background: #edf3f7;
+}
+
+.login-role-options button {
+  color: #435c70;
+}
+
+.login-role-options button.selected {
+  color: #ffffff;
+  background: #17666e;
+}
+
+.login-form input,
+.login-form textarea {
+  color: #173047;
+  background: #ffffff;
+  border-color: #b9c9d6;
+}
+
+.login-form input::placeholder,
+.login-form textarea::placeholder {
+  color: #697d8d;
+}
+
+.login-form input:focus-visible,
+.login-form textarea:focus-visible,
+.login-role-options button:focus-visible,
+.login-submit:focus-visible,
+.login-mode-switch button:focus-visible {
+  outline-color: rgba(23, 102, 110, 0.45);
+}
+
+.login-mode-switch button {
+  color: #12636b;
+}
 
 @media (max-width: 1050px) {
   .sidebar { width: 220px; }

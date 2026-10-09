@@ -1,119 +1,138 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
-export default function MaintenanceBoard({ complaints = [], onSelectComplaint, onUpdateStatus }) {
-  const activeMaintenance = complaints.filter(
-    (c) => c.status === 'ASSIGNED' || c.status === 'IN_PROGRESS' || c.status === 'RESOLVED'
-  );
-
+export default function MaintenanceBoard({ complaints = [], onSelectComplaint, onUpdateStatus, currentUser, currentRole }) {
+  const activeMaintenance = complaints.filter((complaint) => (
+    ['ASSIGNED', 'IN_PROGRESS'].includes(complaint.status)
+    && (currentRole === 'ADMIN' || complaint.assignedStaffId === currentUser?.id)
+  ));
   const [selectedId, setSelectedId] = useState(null);
-  const [maintenanceNotes, setMaintenanceNotes] = useState('');
+  const [workProgress, setWorkProgress] = useState('');
+  const [resolutionDetails, setResolutionDetails] = useState('');
   const [workStatus, setWorkStatus] = useState('IN_PROGRESS');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
-  const selectedComplaint = complaints.find((c) => c.id === selectedId);
+  const selectedComplaint = complaints.find((complaint) => complaint.id === selectedId);
 
-  const handleUpdateWork = async (e) => {
-    e.preventDefault();
-    if (!selectedId) return;
-    await onUpdateStatus(selectedId, workStatus, selectedComplaint?.inspectionNotes, maintenanceNotes);
-    setSelectedId(null);
-    setMaintenanceNotes('');
+  useEffect(() => {
+    setWorkProgress(selectedComplaint?.workProgress || '');
+    setResolutionDetails(selectedComplaint?.resolutionDetails || '');
+    setWorkStatus(selectedComplaint?.status || 'IN_PROGRESS');
+    setError('');
+  }, [
+    selectedComplaint?.id,
+    selectedComplaint?.status,
+    selectedComplaint?.workProgress,
+    selectedComplaint?.resolutionDetails,
+  ]);
+
+  const handleUpdateWork = async (event) => {
+    event.preventDefault();
+    if (!selectedComplaint) return;
+    setSaving(true);
+    setError('');
+    try {
+      const saved = await onUpdateStatus(
+        selectedComplaint.id,
+        workStatus,
+        selectedComplaint.inspectionNotes,
+        selectedComplaint.maintenanceNotes,
+        workProgress,
+        resolutionDetails,
+      );
+      if (saved) {
+        setSelectedId(null);
+      } else {
+        setError('Update was not saved. Check the error message and try again.');
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div className="maintenance-panel panel-card">
       <div className="panel-header">
         <div>
-          <h2>🛠️ Drainage Maintenance Workboard</h2>
-          <p>Track ongoing drain clearing, jetting, culvert repairs, and field inspections.</p>
+          <h2>Drainage Maintenance Workboard</h2>
+          <p>Complaints assigned to you that are awaiting work or in progress.</p>
         </div>
       </div>
 
-      <div className="maintenance-grid">
-        {activeMaintenance.map((item) => (
-          <div key={item.id} className={`maintenance-card ${item.status?.toLowerCase()}`}>
-            <div className="card-topline">
-              <span className="code">#CMP-{item.id}</span>
-              <span className={`priority-tag ${item.priority?.toLowerCase()}`}>{item.priority}</span>
-            </div>
-
-            <h3>{item.issueType?.replace('_', ' ')}</h3>
-            <p className="loc">📍 {item.address}</p>
-
-            <div className="assigned-bar">
-              <span>👷 Staff: <strong>{item.assignedStaffName || 'Unassigned'}</strong></span>
-            </div>
-
-            {item.inspectionNotes && (
-              <div className="field-note">
-                <small>Inspection Note:</small>
-                <p>{item.inspectionNotes}</p>
+      {activeMaintenance.length === 0 ? (
+        <div className="empty-state"><p>No complaints are currently assigned to you for maintenance.</p></div>
+      ) : (
+        <div className="maintenance-grid">
+          {activeMaintenance.map((item) => (
+            <div key={item.id} className={`maintenance-card ${item.status.toLowerCase()}`}>
+              <div className="card-topline">
+                <span className="code">#CMP-{item.id}</span>
+                <span className={`priority-tag ${item.priority?.toLowerCase()}`}>{item.priority}</span>
               </div>
-            )}
 
-            {item.maintenanceNotes && (
-              <div className="field-note work-note">
-                <small>Maintenance Note:</small>
-                <p>{item.maintenanceNotes}</p>
+              <h3>{item.issueType?.replaceAll('_', ' ')}</h3>
+              {item.description && <p>{item.description}</p>}
+              {item.address && <p className="loc">{item.address}</p>}
+              {item.createdAt && <p>Submitted: {new Date(item.createdAt).toLocaleString()}</p>}
+
+              {item.inspectionNotes && <div className="field-note"><small>Inspection notes</small><p>{item.inspectionNotes}</p></div>}
+              {item.workProgress && <div className="field-note work-note"><small>Work progress</small><p>{item.workProgress}</p></div>}
+              {item.resolutionDetails && <div className="field-note"><small>Resolution details</small><p>{item.resolutionDetails}</p></div>}
+
+              <div className="card-footer">
+                <span className={`status-pill ${item.status.toLowerCase()}`}>{item.status.replaceAll('_', ' ')}</span>
+                <button type="button" className="action-btn-sm" onClick={() => onSelectComplaint(item)}>View complaint</button>
+                <button
+                  type="button"
+                  className="action-btn-sm"
+                  onClick={() => setSelectedId(item.id)}
+                >
+                  Update work
+                </button>
               </div>
-            )}
-
-            <div className="card-footer">
-              <span className={`status-pill ${item.status?.toLowerCase()}`}>{item.status?.replace('_', ' ')}</span>
-              <button
-                type="button"
-                className="action-btn-sm"
-                onClick={() => {
-                  setSelectedId(item.id);
-                  setWorkStatus(item.status);
-                  setMaintenanceNotes(item.maintenanceNotes || '');
-                }}
-              >
-                ✏️ Update Progress
-              </button>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {selectedComplaint && (
         <div className="modal-backdrop">
           <div className="modal-content">
             <div className="modal-header">
-              <h2>Update Maintenance Work — #CMP-{selectedComplaint.id}</h2>
-              <button type="button" className="close-btn" onClick={() => setSelectedId(null)}>✕</button>
+              <h2>Update work — #CMP-{selectedComplaint.id}</h2>
+              <button type="button" className="close-btn" onClick={() => setSelectedId(null)} aria-label="Close work update">✕</button>
             </div>
             <form onSubmit={handleUpdateWork} className="modal-form">
               <div className="form-group">
-                <label>Issue Type &amp; Location</label>
-                <p><strong>{selectedComplaint.issueType?.replace('_', ' ')}</strong> — {selectedComplaint.address}</p>
+                <label>Citizen description</label>
+                <p>{selectedComplaint.description || 'Not provided'}</p>
               </div>
-
+              {selectedComplaint.address && (
+                <div className="form-group">
+                  <label>Reported location</label>
+                  <p>{selectedComplaint.address}</p>
+                </div>
+              )}
               <div className="form-group">
-                <label>Maintenance Work Status *</label>
-                <select
-                  value={workStatus}
-                  onChange={(e) => setWorkStatus(e.target.value)}
-                >
-                  <option value="ASSIGNED">ASSIGNED (Pending Dispatch)</option>
-                  <option value="IN_PROGRESS">IN PROGRESS (Crew Onsite)</option>
-                  <option value="RESOLVED">RESOLVED (Restored &amp; Cleaned)</option>
+                <label htmlFor="workStatus">Status</label>
+                <select id="workStatus" value={workStatus} onChange={(event) => setWorkStatus(event.target.value)}>
+                  <option value="ASSIGNED">Assigned</option>
+                  <option value="IN_PROGRESS">In progress</option>
+                  <option value="RESOLVED">Resolved</option>
                 </select>
               </div>
-
               <div className="form-group">
-                <label>Progress / Completion Notes *</label>
-                <textarea
-                  rows="4"
-                  required
-                  placeholder="Record equipment deployed (e.g., suction tanker, high-pressure jetter), volume cleared, or restoration completion..."
-                  value={maintenanceNotes}
-                  onChange={(e) => setMaintenanceNotes(e.target.value)}
-                />
+                <label htmlFor="workProgress">Work progress</label>
+                <textarea id="workProgress" rows="3" value={workProgress} onChange={(event) => setWorkProgress(event.target.value)} />
               </div>
-
+              <div className="form-group">
+                <label htmlFor="resolutionDetails">Resolution details</label>
+                <textarea id="resolutionDetails" rows="3" value={resolutionDetails} onChange={(event) => setResolutionDetails(event.target.value)} />
+              </div>
+              {error && <p className="alert-box error" role="alert">{error}</p>}
               <div className="modal-actions">
                 <button type="button" className="action-btn-secondary" onClick={() => setSelectedId(null)}>Cancel</button>
-                <button type="submit" className="action-btn-success">Save &amp; Notify Citizen</button>
+                <button type="submit" className="action-btn-success" disabled={saving}>Save work update</button>
               </div>
             </form>
           </div>

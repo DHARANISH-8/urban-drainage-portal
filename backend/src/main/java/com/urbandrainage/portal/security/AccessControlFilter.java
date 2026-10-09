@@ -61,7 +61,10 @@ public class AccessControlFilter extends OncePerRequestFilter {
         if (path.equals("/api/complaints/stats") || path.equals("/api/complaints/map")) return Set.of("STAFF", "ADMIN").contains(role);
         if (path.matches("/api/complaints/\\d+/assign")) return "ADMIN".equals(role);
         if (path.matches("/api/complaints/\\d+/status")) return Set.of("STAFF", "ADMIN").contains(role);
-        if (path.matches("/api/complaints/\\d+")) return "ADMIN".equals(role);
+        if (path.matches("/api/complaints/\\d+")) {
+            return HttpMethod.GET.matches(method)
+                    || ("ADMIN".equals(role) && HttpMethod.DELETE.matches(method));
+        }
         if (path.equals("/api/drainage/map")) return Set.of("STAFF", "ADMIN").contains(role);
         return false;
     }

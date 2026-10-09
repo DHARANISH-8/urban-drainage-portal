@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { authorizedFetch } from '../api';
 
 const ISSUE_TYPES = [
@@ -29,8 +29,23 @@ const AUTOMATIC_PRIORITY_MAP = {
 
 const MAP_WIDTH = 820;
 const MAP_HEIGHT = 520;
+const MAX_PHOTO_SIZE_BYTES = 5 * 1024 * 1024;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+async function getSubmitError(response) {
+  try {
+    const body = await response.json();
+    const validationErrors = body.errors
+      ? Object.values(body.errors).flat().join(' ')
+      : '';
+    const message = body.message || body.detail || validationErrors;
+    if (message) return `Failed to submit complaint: ${message}`;
+  } catch {
+    // Some server errors do not include a JSON response body.
+  }
+  return `Failed to submit complaint (HTTP ${response.status}). Please try again.`;
+}
 
 const projectToLatLng = (x, y) => {
   const minLat = 19.04;
@@ -62,13 +77,13 @@ const projectFromLatLng = (latitude, longitude) => {
   };
 };
 
-export default function ReportIssue({ currentUser, token, selectedDrain, onSubmitSuccess }) {
+export default function ReportIssue({ token, selectedDrain, onSubmitSuccess }) {
   const [formData, setFormData] = useState({
     issueType: 'BLOCKED_DRAIN',
     description: '',
-    latitude: selectedDrain?.latitude ?? 19.076,
-    longitude: selectedDrain?.longitude ?? 72.8777,
-    address: selectedDrain?.location || 'Greely Valley, Sector 4, City Zone',
+    latitude: selectedDrain?.latitude ?? null,
+    longitude: selectedDrain?.longitude ?? null,
+    address: selectedDrain?.location || '',
     photoUrl: '',
     priority: AUTOMATIC_PRIORITY_MAP['BLOCKED_DRAIN'],
   });
@@ -78,6 +93,7 @@ export default function ReportIssue({ currentUser, token, selectedDrain, onSubmi
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const photoInputRef = useRef(null);
 
   useEffect(() => {
     if (!selectedDrain) return;
@@ -85,11 +101,15 @@ export default function ReportIssue({ currentUser, token, selectedDrain, onSubmi
       ...previous,
       latitude: selectedDrain.latitude,
       longitude: selectedDrain.longitude,
-      address: selectedDrain.location || selectedDrain.name,
+      address: selectedDrain.location || '',
     }));
   }, [selectedDrain]);
 
-  const markerPosition = useMemo(() => projectFromLatLng(formData.latitude, formData.longitude), [formData.latitude, formData.longitude]);
+  const markerPosition = useMemo(() => (
+    formData.latitude == null || formData.longitude == null
+      ? { x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 }
+      : projectFromLatLng(formData.latitude, formData.longitude)
+  ), [formData.latitude, formData.longitude]);
 
   const handleIssueTypeChange = (newType) => {
     const autoMappedPriority = AUTOMATIC_PRIORITY_MAP[newType] || 'MEDIUM';
@@ -118,7 +138,6 @@ export default function ReportIssue({ currentUser, token, selectedDrain, onSubmi
           ...prev,
           latitude: lat,
           longitude: lng,
-          address: `GPS Location (${lat}, ${lng})`,
         }));
         setLoadingGps(false);
       },
@@ -141,7 +160,6 @@ export default function ReportIssue({ currentUser, token, selectedDrain, onSubmi
       ...prev,
       latitude,
       longitude,
-      address: `Selected Point (${latitude}, ${longitude})`,
     }));
   };
 
@@ -151,17 +169,32 @@ export default function ReportIssue({ currentUser, token, selectedDrain, onSubmi
 
     if (!file.type.startsWith('image/')) {
       setErrorMsg('Please upload an image file (JPG, PNG, GIF, WEBP, BMP, or AVIF).');
-      setFormData((prev) => ({ ...prev, photoUrl: '' }));
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > MAX_PHOTO_SIZE_BYTES) {
+      setErrorMsg('Please upload an image smaller than 5 MB.');
       e.target.value = '';
       return;
     }
 
     setErrorMsg('');
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onload = () => {
       setFormData((prev) => ({ ...prev, photoUrl: reader.result }));
     };
+    reader.onerror = () => {
+      setErrorMsg('The selected image could not be read. Please try another photo.');
+      e.target.value = '';
+    };
     reader.readAsDataURL(file);
+  };
+
+  const handleRemovePhoto = () => {
+    setFormData((prev) => ({ ...prev, photoUrl: '' }));
+    setErrorMsg('');
+    if (photoInputRef.current) photoInputRef.current.value = '';
   };
 
   const handleSubmit = async (e) => {
@@ -171,8 +204,6 @@ export default function ReportIssue({ currentUser, token, selectedDrain, onSubmi
     setSuccessMsg('');
 
     const payload = {
-      userId: currentUser?.id || 1,
-      userName: currentUser?.name || 'Citizen User',
       issueType: formData.issueType,
       description: formData.description,
       latitude: formData.latitude,
@@ -195,18 +226,19 @@ export default function ReportIssue({ currentUser, token, selectedDrain, onSubmi
       );
 
       if (!response.ok) {
-        throw new Error('Failed to submit complaint.');
+        throw new Error(await getSubmitError(response));
       }
 
       const saved = await response.json();
       setSuccessMsg(`Complaint #CMP-${saved.id} submitted successfully! Priority auto-mapped to ${saved.priority}.`);
+      if (photoInputRef.current) photoInputRef.current.value = '';
 
       setFormData({
         issueType: 'BLOCKED_DRAIN',
         description: '',
-        latitude: 19.076,
-        longitude: 72.8777,
-        address: 'Greely Valley, Sector 4, City Zone',
+        latitude: selectedDrain?.latitude ?? null,
+        longitude: selectedDrain?.longitude ?? null,
+        address: selectedDrain?.location || '',
         photoUrl: '',
         priority: AUTOMATIC_PRIORITY_MAP['BLOCKED_DRAIN'],
       });
@@ -225,7 +257,7 @@ export default function ReportIssue({ currentUser, token, selectedDrain, onSubmi
     <div className="report-issue-container panel-card">
       <div className="form-header">
         <h2>📝 Report Urban Drainage Issue</h2>
-        <p>Submit a location-tagged complaint directly to the Urban Drainage Department.</p>
+        <p>Report a drainage issue and provide its location details.</p>
       </div>
 
       {successMsg && <div className="alert-box success">✅ {successMsg}</div>}
@@ -273,7 +305,16 @@ export default function ReportIssue({ currentUser, token, selectedDrain, onSubmi
             <div className="selected-drain-association">
               <span>Selected drain</span>
               <strong>{selectedDrain.drainCode} · {selectedDrain.name}</strong>
-              <p>{selectedDrain.location || 'Location not recorded'}</p>
+              <div className="form-group">
+                <label htmlFor="selectedDrainAddress">Reported address / landmark *</label>
+                <input
+                  id="selectedDrainAddress"
+                  type="text"
+                  value={formData.address}
+                  onChange={(e) => setFormData((previous) => ({ ...previous, address: e.target.value }))}
+                  required
+                />
+              </div>
               <small>The complaint will be saved to this drain automatically.</small>
             </div>
           ) : <>
@@ -322,35 +363,45 @@ export default function ReportIssue({ currentUser, token, selectedDrain, onSubmi
 
           {locationMode === 'MANUAL' && (
             <div className="location-box manual-location-box">
-              <p className="hint">Enter the latitude, longitude, and nearest landmark or street address below.</p>
+              <p className="hint">Enter the nearest landmark or street address below.</p>
             </div>
           )}
 
-          <div className="form-row grid-3 location-inputs">
-            <div className="form-group">
-              <label>Latitude</label>
-              <input type="number" step="any" min="-90" max="90" value={formData.latitude} readOnly={locationMode !== 'MANUAL'} required onChange={(e) => setFormData((prev) => ({ ...prev, latitude: e.target.value === '' ? '' : Number(e.target.value) }))} />
+          {locationMode === 'MANUAL' ? (
+            <div className="form-group manual-address-input">
+              <label htmlFor="manualAddress">Street Address / Landmark *</label>
+              <input id="manualAddress" type="text" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} required />
             </div>
-            <div className="form-group">
-              <label>Longitude</label>
-              <input type="number" step="any" min="-180" max="180" value={formData.longitude} readOnly={locationMode !== 'MANUAL'} required onChange={(e) => setFormData((prev) => ({ ...prev, longitude: e.target.value === '' ? '' : Number(e.target.value) }))} />
+          ) : (
+            <div className="form-row grid-3 location-inputs">
+              <div className="form-group">
+                <label>Latitude</label>
+                <input type="number" step="any" min="-90" max="90" value={formData.latitude ?? ''} readOnly required />
+              </div>
+              <div className="form-group">
+                <label>Longitude</label>
+                <input type="number" step="any" min="-180" max="180" value={formData.longitude ?? ''} readOnly required />
+              </div>
+              <div className="form-group">
+                <label>Street Address / Landmark</label>
+                <input type="text" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} required />
+              </div>
             </div>
-            <div className="form-group">
-              <label>Street Address / Landmark</label>
-              <input type="text" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} required />
-            </div>
-          </div>
+          )}
           </>}
         </div>
 
         <div className="form-group">
           <label htmlFor="photo">Upload Photograph (Optional)</label>
-          <input type="file" id="photo" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,image/avif,.jpg,.jpeg,.png,.gif,.webp,.bmp,.avif" onChange={handlePhotoUpload} />
-          <p className="hint">Accepted formats: JPG, PNG, GIF, WEBP, BMP, and AVIF.</p>
+          <input ref={photoInputRef} type="file" id="photo" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,image/avif,.jpg,.jpeg,.png,.gif,.webp,.bmp,.avif" onChange={handlePhotoUpload} />
+          <p className="hint">Accepted formats: JPG, PNG, GIF, WEBP, BMP, and AVIF (up to 5 MB).</p>
           {formData.photoUrl && (
             <div className="photo-preview-box">
               <span>Photo Attached:</span>
               <img src={formData.photoUrl} alt="Complaint preview" className="photo-thumb" />
+              <button type="button" className="remove-photo-btn" onClick={handleRemovePhoto} aria-label="Remove uploaded photo">
+                Remove photo
+              </button>
             </div>
           )}
         </div>

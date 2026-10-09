@@ -2,6 +2,7 @@ package com.urbandrainage.portal.service;
 
 import com.urbandrainage.portal.dto.AuthResponse;
 import com.urbandrainage.portal.dto.LoginRequest;
+import com.urbandrainage.portal.dto.ManagedUserRequest;
 import com.urbandrainage.portal.dto.RegistrationRequest;
 import com.urbandrainage.portal.entity.User;
 import com.urbandrainage.portal.repository.UserRepository;
@@ -40,14 +41,9 @@ public class AuthService {
     }
 
     public AuthResponse register(RegistrationRequest request) {
-        String email = request.email().trim().toLowerCase(Locale.ROOT);
-        if (userRepository.findByEmail(email).isPresent()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "An account with this email already exists.");
-        }
-
         User user = new User();
         user.setName(request.name().trim());
-        user.setEmail(email);
+        user.setEmail(normalizeNewAccountEmail(request.email()));
         user.setRole("CITIZEN");
         user.setPhone(request.phone().trim());
         user.setAddress(request.address().trim());
@@ -58,6 +54,25 @@ public class AuthService {
         AuthenticatedUser authenticatedUser = AuthenticatedUser.from(savedUser);
         sessions.put(token, authenticatedUser);
         return response(token, authenticatedUser);
+    }
+
+    public User createManagedUser(ManagedUserRequest request) {
+        User user = new User();
+        user.setName(request.name().trim());
+        user.setEmail(normalizeNewAccountEmail(request.email()));
+        user.setRole(request.role().trim().toUpperCase(Locale.ROOT));
+        user.setPhone(request.phone().trim());
+        user.setAddress(request.address() == null || request.address().isBlank() ? null : request.address().trim());
+        user.setPasswordHash(passwordEncoder.encode(request.password()));
+        return userRepository.save(user);
+    }
+
+    private String normalizeNewAccountEmail(String input) {
+        String email = input.trim().toLowerCase(Locale.ROOT);
+        if (userRepository.findByEmail(email).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "An account with this email already exists.");
+        }
+        return email;
     }
 
     private AuthResponse response(String token, AuthenticatedUser user) {

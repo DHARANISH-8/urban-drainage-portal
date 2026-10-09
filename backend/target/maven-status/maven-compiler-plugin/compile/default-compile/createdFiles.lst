@@ -1,1 +1,5 @@
+com\urbandrainage\portal\controller\ApiExceptionHandler$ApiError.class
+com\urbandrainage\portal\dto\ManagedUserRequest.class
+com\urbandrainage\portal\ComplaintPhotoColumnMigration.class
+com\urbandrainage\portal\controller\ApiExceptionHandler.class
 com\urbandrainage\portal\service\DrainService.class

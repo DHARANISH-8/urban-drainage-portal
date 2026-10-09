@@ -1,32 +1,31 @@
 import React, { useState } from 'react';
 
 const accounts = {
-  CITIZEN: { email: 'john.citizen@city.gov', password: 'Citizen@123', label: 'Citizen' },
-  STAFF: { email: 'robert.vance@city.gov', password: 'Staff@123', label: 'Staff' },
-  ADMIN: { email: 'admin.drainage@city.gov', password: 'Admin@123', label: 'Administrator' },
+  CITIZEN: { label: 'Citizen' },
+  STAFF: { label: 'Staff' },
+  ADMIN: { label: 'Administrator' },
 };
 
 export default function LoginPage({ onLogin, notice = '' }) {
   const [mode, setMode] = useState('login');
   const [role, setRole] = useState('CITIZEN');
   const [name, setName] = useState('');
-  const [email, setEmail] = useState(accounts.CITIZEN.email);
+  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
-  const [password, setPassword] = useState(accounts.CITIZEN.password);
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const selectRole = (nextRole) => {
     setRole(nextRole);
-    setEmail(accounts[nextRole].email);
-    setPassword(accounts[nextRole].password);
     setError('');
   };
 
   const switchMode = () => {
     if (mode === 'login') {
       setMode('register');
+      setRole('CITIZEN');
       setName('');
       setEmail('');
       setPhone('');
@@ -34,8 +33,6 @@ export default function LoginPage({ onLogin, notice = '' }) {
       setPassword('');
     } else {
       setMode('login');
-      setEmail(accounts[role].email);
-      setPassword(accounts[role].password);
     }
     setError('');
   };
@@ -46,6 +43,9 @@ export default function LoginPage({ onLogin, notice = '' }) {
     setError('');
     try {
       const isRegistering = mode === 'register';
+      if (isRegistering && role !== 'CITIZEN') {
+        throw new Error('Staff and Administrator accounts must be created by an administrator from Account Management.');
+      }
       const response = await fetch(isRegistering ? '/api/auth/register' : '/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -120,11 +120,19 @@ export default function LoginPage({ onLogin, notice = '' }) {
         <h2>{mode === 'register' ? 'Create a citizen account' : 'Sign in to your workspace'}</h2>
         <p className="login-intro">{mode === 'register'
           ? 'Register to report drainage issues and follow their progress.'
-          : 'Choose your account type, then enter the credentials assigned to that role.'}</p>
+          : 'Choose your account type and enter your account credentials.'}</p>
         {mode === 'login' && (
-          <div className="login-role-options" role="group" aria-label="Account type">
+          <div className="login-role-options" role="group" aria-label="Sign in as">
             {Object.entries(accounts).map(([key, account]) => (
-              <button key={key} type="button" className={role === key ? 'selected' : ''} onClick={() => selectRole(key)}>{account.label}</button>
+              <button
+                key={key}
+                type="button"
+                className={role === key ? 'selected' : ''}
+                aria-pressed={role === key}
+                onClick={() => selectRole(key)}
+              >
+                {account.label}
+              </button>
             ))}
           </div>
         )}
@@ -135,18 +143,36 @@ export default function LoginPage({ onLogin, notice = '' }) {
               <label>Mobile number<input type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required maxLength={20} /></label>
             </>
           )}
-          <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
+          <label>
+            Email
+            <input
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </label>
           {mode === 'register' && (
             <label>Address / area<textarea autoComplete="street-address" value={address} onChange={(e) => setAddress(e.target.value)} required maxLength={300} rows={2} /></label>
           )}
-          <label>Password<input type="password" autoComplete={mode === 'register' ? 'new-password' : 'current-password'} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={mode === 'register' ? 8 : undefined} /></label>
+          <label>
+            Password
+            <input
+              type="password"
+              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={mode === 'register' ? 8 : undefined}
+            />
+          </label>
           {(error || notice) && <p className="login-error" role="alert">{error || notice}</p>}
           <button className="login-submit" type="submit" disabled={submitting}>
             {submitting ? (mode === 'register' ? 'Creating account…' : 'Signing in…')
               : mode === 'register' ? 'Create account' : `Sign in as ${accounts[role].label}`}
           </button>
         </form>
-        {mode === 'login' && <p className="demo-note">Demo accounts are pre-filled for local testing. Your selected role must match the account’s assigned role.</p>}
         <p className="login-mode-switch">
           {mode === 'register' ? 'Already have an account?' : 'New to the portal?'}
           {' '}<button type="button" onClick={switchMode}>{mode === 'register' ? 'Sign in' : 'Create a citizen account'}</button>

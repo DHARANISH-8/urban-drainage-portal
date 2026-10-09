@@ -27,7 +27,7 @@ const ROLE_MENUS = {
     { id: 'complaint-management', label: 'Complaint Management', icon: '🗂️' },
     { id: 'infrastructure', label: 'Drainage Infrastructure', icon: '🏗️' },
     { id: 'drainage-map', label: 'Drainage Map', icon: '🗺️' },
-    { id: 'staff-management', label: 'Staff Management', icon: '👥' },
+    { id: 'staff-management', label: 'Account Management', icon: '👥' },
     { id: 'maintenance-board', label: 'Maintenance Management', icon: '🛠️' },
     { id: 'emergency-monitoring', label: 'Emergency Monitoring', icon: '🚨' },
     { id: 'stormwater-analysis', label: 'Stormwater Analysis', icon: '🌊' },

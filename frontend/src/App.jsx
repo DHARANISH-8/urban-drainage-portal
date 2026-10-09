@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import './App.css';
 
 import NavbarHeader from './components/NavbarHeader';
@@ -8,6 +8,7 @@ import ReportIssue from './components/ReportIssue';
 import ComplaintList from './components/ComplaintList';
 import ComplaintDetail from './components/ComplaintDetail';
 import InfrastructureManager from './components/InfrastructureManager';
+import AccountManagement from './components/AccountManagement';
 import MaintenanceBoard from './components/MaintenanceBoard';
 import EmergencyMonitoring from './components/EmergencyMonitoring';
 import StormwaterAnalysis from './components/StormwaterAnalysis';
@@ -15,6 +16,17 @@ import NotificationsView from './components/NotificationsView';
 import ProfileView from './components/ProfileView';
 import LoginPage from './components/LoginPage';
 import { authHeaders, authorizedFetch, SESSION_EXPIRED_EVENT } from './api';
+
+async function getApiErrorMessage(response, fallback) {
+  try {
+    const body = await response.json();
+    if (body.message) return body.message;
+    if (body.error) return body.error;
+  } catch {
+    // Fall back to the HTTP status when the server doesn't return JSON.
+  }
+  return `${fallback} (HTTP ${response.status}).`;
+}
 
 export default function App() {
   const [session, setSession] = useState(() => {
@@ -40,6 +52,8 @@ export default function App() {
 
   const [selectedComplaint, setSelectedComplaint] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [dataError, setDataError] = useState('');
+  const [actionError, setActionError] = useState('');
 
   const [themeMode, setThemeMode] = useState(() => {
     return localStorage.getItem('urban_drainage_theme') || 'day';
@@ -69,6 +83,15 @@ export default function App() {
     localStorage.removeItem('urban_drainage_session');
     setSession(null);
     setSessionError('');
+    setComplaints([]);
+    setInfrastructure([]);
+    setDrains([]);
+    setStats(null);
+    setStaffList([]);
+    setNotifications([]);
+    setSelectedComplaint(null);
+    setDataError('');
+    setActionError('');
   };
 
   useEffect(() => {
@@ -77,13 +100,20 @@ export default function App() {
       localStorage.removeItem('urban_drainage_session');
       setSession(null);
       setSessionError('Your session has expired. Please sign in again.');
+      setComplaints([]);
+      setInfrastructure([]);
+      setDrains([]);
+      setStats(null);
+      setStaffList([]);
+      setNotifications([]);
+      setSelectedComplaint(null);
     };
     window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
   }, [session?.token]);
 
   // Fetch data from backend Spring Boot APIs
-  const fetchAllData = async () => {
+  const fetchAllData = useCallback(async () => {
     if (!session?.token) {
       setLoading(false);
       return;
@@ -91,23 +121,28 @@ export default function App() {
 
     try {
       setLoading(true);
+      setDataError('');
 
-      const complaintsUrl = currentRole === 'CITIZEN'
-        ? `/api/complaints/user/${currentUser.id}`
-        : currentRole === 'STAFF' ? `/api/complaints/staff/${currentUser.id}` : '/api/complaints';
+      const complaintsUrl = session.role === 'CITIZEN'
+        ? `/api/complaints/user/${session.id}`
+        : '/api/complaints';
       const [complaintsRes, infraRes, drainsRes, statsRes, staffRes, notifRes] = await Promise.all([
         authorizedFetch(complaintsUrl, session.token),
         authorizedFetch('/api/drainage/infrastructure', session.token),
         authorizedFetch('/api/drains', session.token),
-        currentRole === 'CITIZEN' ? Promise.resolve({ ok: false }) : authorizedFetch('/api/complaints/stats', session.token),
-        currentRole === 'CITIZEN' ? Promise.resolve({ ok: false }) : authorizedFetch('/api/users/staff', session.token),
-        authorizedFetch(`/api/notifications/user/${currentUser.id}`, session.token),
+        session.role === 'CITIZEN' ? Promise.resolve({ ok: false }) : authorizedFetch('/api/complaints/stats', session.token),
+        session.role === 'CITIZEN' ? Promise.resolve({ ok: false }) : authorizedFetch('/api/users/staff', session.token),
+        authorizedFetch(`/api/notifications/user/${session.id}`, session.token),
       ]);
 
-      if (complaintsRes.ok) {
-        const cData = await complaintsRes.json();
-        setComplaints(cData);
+      if (!complaintsRes.ok) {
+        throw new Error(await getApiErrorMessage(complaintsRes, 'Unable to load complaints'));
       }
+      const cData = await complaintsRes.json();
+      setComplaints(cData);
+      setSelectedComplaint((selected) => selected
+        ? cData.find((item) => item.id === selected.id) || null
+        : null);
       if (infraRes.ok) {
         const iData = await infraRes.json();
         setInfrastructure(iData);
@@ -119,58 +154,71 @@ export default function App() {
       if (statsRes.ok) {
         const sData = await statsRes.json();
         setStats(sData);
-      }
+      } else setStats(null);
       if (staffRes.ok) {
         const stData = await staffRes.json();
         setStaffList(stData);
-      }
+      } else setStaffList([]);
       if (notifRes.ok) {
         const nData = await notifRes.json();
         setNotifications(nData);
       }
     } catch (err) {
       console.error('Error fetching backend data:', err);
+      setDataError(err.message || 'Unable to load dashboard data.');
+      setComplaints([]);
+      setSelectedComplaint(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [session]);
 
   useEffect(() => {
     fetchAllData();
-  }, [session]);
+  }, [fetchAllData]);
 
   // Actions
-  const handleAssignStaff = async (complaintId, staffId, staffName) => {
+  const handleAssignStaff = async (complaintId, staffId) => {
     try {
+      setActionError('');
       const res = await authorizedFetch(`/api/complaints/${complaintId}/assign`, session.token, {
         method: 'PUT',
         headers: authHeaders(session.token, { 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ staffId, staffName }),
+        body: JSON.stringify({ staffId }),
       });
-      if (res.ok) {
-        fetchAllData();
-        const updated = await res.json();
-        setSelectedComplaint(updated);
+      if (!res.ok) {
+        throw new Error(await getApiErrorMessage(res, 'Unable to assign staff'));
       }
+      const updated = await res.json();
+      setSelectedComplaint(updated);
+      await fetchAllData();
+      return true;
     } catch (err) {
-      alert('Failed to assign staff.');
+      setActionError(err.message || 'Unable to assign staff.');
+      return false;
     }
   };
 
-  const handleUpdateStatus = async (complaintId, status, inspectionNotes, maintenanceNotes) => {
+  const handleUpdateStatus = async (
+    complaintId, status, inspectionNotes, maintenanceNotes, workProgress, resolutionDetails
+  ) => {
     try {
+      setActionError('');
       const res = await authorizedFetch(`/api/complaints/${complaintId}/status`, session.token, {
         method: 'PUT',
         headers: authHeaders(session.token, { 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ status, inspectionNotes, maintenanceNotes }),
+        body: JSON.stringify({ status, inspectionNotes, maintenanceNotes, workProgress, resolutionDetails }),
       });
-      if (res.ok) {
-        fetchAllData();
-        const updated = await res.json();
-        setSelectedComplaint(updated);
+      if (!res.ok) {
+        throw new Error(await getApiErrorMessage(res, 'Unable to update complaint'));
       }
+      const updated = await res.json();
+      setSelectedComplaint(updated);
+      await fetchAllData();
+      return true;
     } catch (err) {
-      alert('Failed to update status.');
+      setActionError(err.message || 'Unable to update complaint.');
+      return false;
     }
   };
 
@@ -205,12 +253,14 @@ export default function App() {
           themeMode={themeMode}
           onToggleTheme={handleToggleTheme}
         />
+        {loading && <div className="alert-box">Loading dashboard data…</div>}
+        {dataError && <div className="alert-box error" role="alert">{dataError}</div>}
+        {actionError && <div className="alert-box error" role="alert">{actionError}</div>}
 
         {/* Dynamic Tab Rendering */}
         {activeTab === 'dashboard' && (
           <DashboardView
             currentRole={currentRole}
-            currentUser={currentUser}
             stats={stats}
             complaints={complaints}
             infrastructure={infrastructure}
@@ -221,7 +271,6 @@ export default function App() {
 
         {activeTab === 'report-issue' && (
           <ReportIssue
-            currentUser={currentUser}
             token={session.token}
             selectedDrain={drains.find((drain) => drain.id === selectedDrainId) || null}
             onSubmitSuccess={() => {
@@ -234,8 +283,6 @@ export default function App() {
         {activeTab === 'my-complaints' && (
           <ComplaintList
             complaints={complaints}
-            staffList={staffList}
-            currentRole={currentRole}
             currentUser={currentUser}
             filterMode="MY_COMPLAINTS"
             onSelectComplaint={(c) => setSelectedComplaint(c)}
@@ -245,8 +292,6 @@ export default function App() {
         {(activeTab === 'complaint-management' || activeTab === 'reports-analytics') && (
           <ComplaintList
             complaints={complaints}
-            staffList={staffList}
-            currentRole={currentRole}
             currentUser={currentUser}
             filterMode="ALL"
             onSelectComplaint={(c) => setSelectedComplaint(c)}
@@ -256,8 +301,6 @@ export default function App() {
         {activeTab === 'assigned-complaints' && (
           <ComplaintList
             complaints={complaints}
-            staffList={staffList}
-            currentRole={currentRole}
             currentUser={currentUser}
             filterMode="ASSIGNED_TO_ME"
             onSelectComplaint={(c) => setSelectedComplaint(c)}
@@ -288,11 +331,17 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'staff-management' && currentRole === 'ADMIN' && (
+          <AccountManagement token={session.token} />
+        )}
+
         {(activeTab === 'maintenance-board' || activeTab === 'maintenance-updates' || activeTab === 'inspections') && (
           <MaintenanceBoard
             complaints={complaints}
             onSelectComplaint={(c) => setSelectedComplaint(c)}
             onUpdateStatus={handleUpdateStatus}
+            currentUser={currentUser}
+            currentRole={currentRole}
           />
         )}
 
@@ -319,12 +368,7 @@ export default function App() {
         {activeTab === 'help-support' && (
           <div className="panel-card help-panel">
             <h2>❓ Urban Drainage Department Support</h2>
-            <p>For urgent flood emergencies or immediate drain blockages requiring municipal jetting crews:</p>
-            <div className="support-box">
-              <p>📞 <strong>Helpline:</strong> 1800-URBAN-DRAIN (24x7 Control Room)</p>
-              <p>📧 <strong>Email:</strong> support.drainage@city.gov</p>
-              <p>📍 <strong>Headquarters:</strong> Municipal Drainage Works Complex, Sector 4</p>
-            </div>
+            <p>Support contact details are not configured. Contact your organization administrator for assistance.</p>
           </div>
         )}
 
@@ -334,6 +378,7 @@ export default function App() {
             complaint={selectedComplaint}
             staffList={staffList}
             currentRole={currentRole}
+            currentUser={currentUser}
             onClose={() => setSelectedComplaint(null)}
             onAssignStaff={handleAssignStaff}
             onUpdateStatus={handleUpdateStatus}
@@ -345,13 +390,13 @@ export default function App() {
 }
 
 // Inner Dashboard View Component
-function DashboardView({ currentRole, currentUser, stats, complaints, infrastructure, onNavigate, onSelectComplaint }) {
+function DashboardView({ currentRole, stats, complaints, infrastructure, onNavigate, onSelectComplaint }) {
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(false);
-  const total = stats?.totalComplaints || complaints.length;
-  const inProgress = stats?.inProgress || complaints.filter(c => c.status === 'IN_PROGRESS').length;
-  const resolved = stats?.resolved || complaints.filter(c => c.status === 'RESOLVED').length;
-  const emergency = stats?.emergencyCount || complaints.filter(c => c.priority === 'EMERGENCY').length;
+  const total = stats?.totalComplaints ?? complaints.length;
+  const inProgress = stats?.inProgress ?? complaints.filter(c => c.status === 'IN_PROGRESS').length;
+  const resolved = stats?.resolved ?? complaints.filter(c => c.status === 'RESOLVED').length;
+  const emergency = stats?.emergencyCount ?? complaints.filter(c => c.priority === 'EMERGENCY').length;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -467,37 +512,17 @@ function DashboardView({ currentRole, currentUser, stats, complaints, infrastruc
               <div key={item.id} className="timeline-item cursor-pointer" onClick={() => onSelectComplaint(item)}>
                 <div className="mini-meta">
                   <span className="code">#CMP-{item.id}</span>
-                  <span className="title">{item.issueType?.replace('_', ' ')} — <small>{item.address}</small></span>
+                  <span className="title">{item.issueType?.replaceAll('_', ' ') || 'Complaint'} — <small>{item.address || 'Address not provided'}</small></span>
                 </div>
-
+                <p>{item.description || 'Description not provided'}</p>
                 <div className="timeline-row">
-                  <div className="status-track">
-                    {['SUBMITTED', 'UNDER_REVIEW', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED'].map((status) => {
-                      const statusOrder = ['SUBMITTED', 'UNDER_REVIEW', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED'];
-                      const currentIndex = statusOrder.indexOf(item.status);
-                      const targetIndex = statusOrder.indexOf(status);
-                      const isDone = targetIndex <= currentIndex;
-                      const isActive = status === item.status;
-
-                      return (
-                        <span
-                          key={`${item.id}-${status}`}
-                          className={`status-step ${isDone ? 'done' : ''} ${isActive ? 'active' : ''}`}
-                        >
-                          <em className="dot" />
-                          <small>{status.replace('_', ' ')}</small>
-                        </span>
-                      );
-                    })}
-                  </div>
-
-                  <div className="timeline-side">
-                    <span className={`priority priority-${item.priority?.toLowerCase()}`}>{item.priority}</span>
-                    <span className="timeline-date">{new Date(item.createdAt).toLocaleDateString()}</span>
-                  </div>
+                  <span className={`status-tag ${item.status?.toLowerCase()}`}>{item.status?.replaceAll('_', ' ') || 'Status not provided'}</span>
+                  <span className={`priority priority-${item.priority?.toLowerCase()}`}>{item.priority || 'Priority not provided'}</span>
+                  <span className="timeline-date">{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'Submission date not provided'}</span>
                 </div>
               </div>
             ))}
+            {complaints.length === 0 && <p>No complaints have been submitted.</p>}
           </div>
         </div>
 

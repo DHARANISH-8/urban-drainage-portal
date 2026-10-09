@@ -50,20 +50,31 @@ public class ComplaintController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<DrainageComplaint> getComplaintById(@PathVariable Long id) {
+    public ResponseEntity<DrainageComplaint> getComplaintById(
+            @PathVariable Long id, @RequestAttribute AuthenticatedUser authenticatedUser) {
         return complaintService.getComplaintById(id)
+                .filter(complaint -> !"CITIZEN".equals(authenticatedUser.role())
+                        || complaint.getUserId().equals(authenticatedUser.id()))
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PutMapping("/{id}/assign")
     public ResponseEntity<DrainageComplaint> assignStaff(@PathVariable Long id, @Valid @RequestBody AssignmentDTO dto) {
-        DrainageComplaint updated = complaintService.assignStaff(id, dto.staffId(), dto.staffName());
+        DrainageComplaint updated = complaintService.assignStaff(id, dto.staffId());
         return ResponseEntity.ok(updated);
     }
 
     @PutMapping("/{id}/status")
-    public ResponseEntity<DrainageComplaint> updateStatus(@PathVariable Long id, @Valid @RequestBody StatusUpdateDTO dto) {
+    public ResponseEntity<DrainageComplaint> updateStatus(
+            @PathVariable Long id, @Valid @RequestBody StatusUpdateDTO dto,
+            @RequestAttribute AuthenticatedUser authenticatedUser) {
+        if ("STAFF".equals(authenticatedUser.role())
+                && complaintService.getComplaintById(id)
+                .filter(complaint -> authenticatedUser.id().equals(complaint.getAssignedStaffId()))
+                .isEmpty()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         DrainageComplaint updated = complaintService.updateStatus(id, dto);
         return ResponseEntity.ok(updated);
     }

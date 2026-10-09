@@ -1,7 +1,6 @@
 package com.urbandrainage.portal.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 
 public record ComplaintRequestDTO(
     Long userId,
@@ -13,10 +12,8 @@ public record ComplaintRequestDTO(
     @NotBlank(message = "Description is required")
     String description,
 
-    @NotNull(message = "Latitude is required")
     Double latitude,
 
-    @NotNull(message = "Longitude is required")
     Double longitude,
 
     String address,

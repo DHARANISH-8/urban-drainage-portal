@@ -2,6 +2,7 @@ package com.urbandrainage.portal.service;
 
 import com.urbandrainage.portal.dto.AuthResponse;
 import com.urbandrainage.portal.dto.LoginRequest;
+import com.urbandrainage.portal.dto.ManagedUserRequest;
 import com.urbandrainage.portal.dto.RegistrationRequest;
 import com.urbandrainage.portal.entity.User;
 import com.urbandrainage.portal.repository.UserRepository;
@@ -97,6 +98,47 @@ class AuthServiceTest {
                         "+1 555-0123",
                         "SecurePass123",
                         "Riverside"
+                )));
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+    }
+
+    @Test
+    void adminCreatedAccountsKeepSelectedRoleAndHashPassword() {
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User user = invocation.getArgument(0);
+            user.setId(43L);
+            return user;
+        });
+
+        User created = authService.createManagedUser(new ManagedUserRequest(
+                "Drainage Officer",
+                " OFFICER@example.com ",
+                "+1 555-0199",
+                "SecurePass123",
+                "Ward 4",
+                "STAFF"
+        ));
+
+        assertEquals(43L, created.getId());
+        assertEquals("officer@example.com", created.getEmail());
+        assertEquals("STAFF", created.getRole());
+        assertEquals("Ward 4", created.getAddress());
+        assertTrue(new BCryptPasswordEncoder().matches("SecurePass123", created.getPasswordHash()));
+    }
+
+    @Test
+    void adminCreatedAccountRejectsDuplicateEmail() {
+        when(userRepository.findByEmail("officer@example.com")).thenReturn(Optional.of(new User()));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () ->
+                authService.createManagedUser(new ManagedUserRequest(
+                        "Drainage Officer",
+                        "OFFICER@example.com",
+                        "+1 555-0199",
+                        "SecurePass123",
+                        null,
+                        "ADMIN"
                 )));
 
         assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
