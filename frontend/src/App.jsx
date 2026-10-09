@@ -13,20 +13,27 @@ import EmergencyMonitoring from './components/EmergencyMonitoring';
 import StormwaterAnalysis from './components/StormwaterAnalysis';
 import NotificationsView from './components/NotificationsView';
 import ProfileView from './components/ProfileView';
-
-const MOCK_USERS = {
-  CITIZEN: { id: 1, name: 'John Doe', email: 'john.citizen@city.gov', role: 'CITIZEN', phone: '+1 555-0192' },
-  STAFF: { id: 2, name: 'Robert Vance', email: 'robert.vance@city.gov', role: 'STAFF', phone: '+1 555-0143' },
-  ADMIN: { id: 4, name: 'Admin Officer', email: 'admin.drainage@city.gov', role: 'ADMIN', phone: '+1 555-0100' },
-};
+import LoginPage from './components/LoginPage';
+import { authHeaders, authorizedFetch, SESSION_EXPIRED_EVENT } from './api';
 
 export default function App() {
-  const [currentRole, setCurrentRole] = useState('CITIZEN');
-  const [currentUser, setCurrentUser] = useState(MOCK_USERS.CITIZEN);
+  const [session, setSession] = useState(() => {
+    try {
+      const savedSession = JSON.parse(localStorage.getItem('urban_drainage_session'));
+      return typeof savedSession?.token === 'string' && savedSession.token ? savedSession : null;
+    } catch {
+      return null;
+    }
+  });
+  const [sessionError, setSessionError] = useState('');
+  const currentUser = session;
+  const currentRole = session?.role;
   const [activeTab, setActiveTab] = useState('dashboard');
 
   const [complaints, setComplaints] = useState([]);
   const [infrastructure, setInfrastructure] = useState([]);
+  const [drains, setDrains] = useState([]);
+  const [selectedDrainId, setSelectedDrainId] = useState(null);
   const [stats, setStats] = useState(null);
   const [staffList, setStaffList] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -47,24 +54,54 @@ export default function App() {
     setThemeMode((prev) => (prev === 'night' ? 'day' : 'night'));
   };
 
-  // Handle role switching
-  const handleRoleChange = (newRole) => {
-    setCurrentRole(newRole);
-    setCurrentUser(MOCK_USERS[newRole] || MOCK_USERS.CITIZEN);
+  const handleLogin = (nextSession) => {
+    if (!nextSession?.token || !['CITIZEN', 'STAFF', 'ADMIN'].includes(nextSession.role)) {
+      throw new Error('The sign-in service returned an invalid session. Please try again.');
+    }
+    localStorage.setItem('urban_drainage_session', JSON.stringify(nextSession));
+    setSessionError('');
+    setSession(nextSession);
     setActiveTab('dashboard');
   };
 
+  const handleLogout = async () => {
+    if (session?.token) await authorizedFetch('/api/auth/logout', session.token, { method: 'POST' }).catch(() => {});
+    localStorage.removeItem('urban_drainage_session');
+    setSession(null);
+    setSessionError('');
+  };
+
+  useEffect(() => {
+    const handleSessionExpired = (event) => {
+      if (event.detail?.token !== session?.token) return;
+      localStorage.removeItem('urban_drainage_session');
+      setSession(null);
+      setSessionError('Your session has expired. Please sign in again.');
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+  }, [session?.token]);
+
   // Fetch data from backend Spring Boot APIs
   const fetchAllData = async () => {
+    if (!session?.token) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
 
-      const [complaintsRes, infraRes, statsRes, staffRes, notifRes] = await Promise.all([
-        fetch('/api/complaints'),
-        fetch('/api/drainage/infrastructure'),
-        fetch('/api/complaints/stats'),
-        fetch('/api/users/staff'),
-        fetch(`/api/notifications/user/${currentUser.id}`),
+      const complaintsUrl = currentRole === 'CITIZEN'
+        ? `/api/complaints/user/${currentUser.id}`
+        : currentRole === 'STAFF' ? `/api/complaints/staff/${currentUser.id}` : '/api/complaints';
+      const [complaintsRes, infraRes, drainsRes, statsRes, staffRes, notifRes] = await Promise.all([
+        authorizedFetch(complaintsUrl, session.token),
+        authorizedFetch('/api/drainage/infrastructure', session.token),
+        authorizedFetch('/api/drains', session.token),
+        currentRole === 'CITIZEN' ? Promise.resolve({ ok: false }) : authorizedFetch('/api/complaints/stats', session.token),
+        currentRole === 'CITIZEN' ? Promise.resolve({ ok: false }) : authorizedFetch('/api/users/staff', session.token),
+        authorizedFetch(`/api/notifications/user/${currentUser.id}`, session.token),
       ]);
 
       if (complaintsRes.ok) {
@@ -74,6 +111,10 @@ export default function App() {
       if (infraRes.ok) {
         const iData = await infraRes.json();
         setInfrastructure(iData);
+      }
+      if (drainsRes.ok) {
+        const drainData = await drainsRes.json();
+        setDrains(drainData);
       }
       if (statsRes.ok) {
         const sData = await statsRes.json();
@@ -96,14 +137,14 @@ export default function App() {
 
   useEffect(() => {
     fetchAllData();
-  }, [currentUser.id]);
+  }, [session]);
 
   // Actions
   const handleAssignStaff = async (complaintId, staffId, staffName) => {
     try {
-      const res = await fetch(`/api/complaints/${complaintId}/assign`, {
+      const res = await authorizedFetch(`/api/complaints/${complaintId}/assign`, session.token, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(session.token, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({ staffId, staffName }),
       });
       if (res.ok) {
@@ -118,9 +159,9 @@ export default function App() {
 
   const handleUpdateStatus = async (complaintId, status, inspectionNotes, maintenanceNotes) => {
     try {
-      const res = await fetch(`/api/complaints/${complaintId}/status`, {
+      const res = await authorizedFetch(`/api/complaints/${complaintId}/status`, session.token, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(session.token, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({ status, inspectionNotes, maintenanceNotes }),
       });
       if (res.ok) {
@@ -135,7 +176,7 @@ export default function App() {
 
   const handleMarkNotificationRead = async (notifId) => {
     try {
-      await fetch(`/api/notifications/${notifId}/read`, { method: 'PUT' });
+      await authorizedFetch(`/api/notifications/${notifId}/read`, session.token, { method: 'PUT' });
       setNotifications((prev) => prev.map((n) => (n.id === notifId ? { ...n, read: true } : n)));
     } catch (err) {
       console.error('Error marking notification as read:', err);
@@ -143,6 +184,8 @@ export default function App() {
   };
 
   const unreadCount = notifications.filter((n) => !n.read).length;
+
+  if (!session) return <LoginPage onLogin={handleLogin} notice={sessionError} />;
 
   return (
     <div className="app-shell">
@@ -156,7 +199,7 @@ export default function App() {
         <NavbarHeader
           currentUser={currentUser}
           currentRole={currentRole}
-          onRoleChange={handleRoleChange}
+          onLogout={handleLogout}
           unreadNotificationsCount={unreadCount}
           onOpenNotifications={() => setActiveTab('notifications')}
           themeMode={themeMode}
@@ -179,9 +222,11 @@ export default function App() {
         {activeTab === 'report-issue' && (
           <ReportIssue
             currentUser={currentUser}
+            token={session.token}
+            selectedDrain={drains.find((drain) => drain.id === selectedDrainId) || null}
             onSubmitSuccess={() => {
               fetchAllData();
-              setActiveTab('my-complaints');
+              setActiveTab(selectedDrainId == null ? 'my-complaints' : 'drainage-map');
             }}
           />
         )}
@@ -191,6 +236,7 @@ export default function App() {
             complaints={complaints}
             staffList={staffList}
             currentRole={currentRole}
+            currentUser={currentUser}
             filterMode="MY_COMPLAINTS"
             onSelectComplaint={(c) => setSelectedComplaint(c)}
           />
@@ -201,6 +247,7 @@ export default function App() {
             complaints={complaints}
             staffList={staffList}
             currentRole={currentRole}
+            currentUser={currentUser}
             filterMode="ALL"
             onSelectComplaint={(c) => setSelectedComplaint(c)}
           />
@@ -211,6 +258,7 @@ export default function App() {
             complaints={complaints}
             staffList={staffList}
             currentRole={currentRole}
+            currentUser={currentUser}
             filterMode="ASSIGNED_TO_ME"
             onSelectComplaint={(c) => setSelectedComplaint(c)}
           />
@@ -219,7 +267,15 @@ export default function App() {
         {activeTab === 'drainage-map' && (
           <DrainageMap
             complaints={complaints}
-            infrastructure={infrastructure}
+            drains={drains}
+            token={session.token}
+            currentRole={currentRole}
+            selectedDrainId={selectedDrainId}
+            onSelectDrain={(drain) => setSelectedDrainId(drain?.id ?? null)}
+            onReportDrain={(drain) => {
+              setSelectedDrainId(drain.id);
+              setActiveTab('report-issue');
+            }}
             onSelectComplaint={(c) => setSelectedComplaint(c)}
           />
         )}
@@ -228,6 +284,7 @@ export default function App() {
           <InfrastructureManager
             infrastructure={infrastructure}
             onRefresh={fetchAllData}
+            token={session.token}
           />
         )}
 
@@ -246,7 +303,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'stormwater-analysis' && <StormwaterAnalysis />}
+        {activeTab === 'stormwater-analysis' && <StormwaterAnalysis token={session.token} />}
 
         {activeTab === 'notifications' && (
           <NotificationsView

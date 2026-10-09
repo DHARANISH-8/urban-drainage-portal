@@ -126,7 +126,7 @@ export default function ComplaintDetail({ complaint, staffList = [], currentRole
               <h3>⚙️ Staff & Admin Management Actions</h3>
               
               {/* Assignment Controls */}
-              <div className="action-row">
+              {currentRole === 'ADMIN' && <div className="action-row">
                 <div className="form-group flex-1">
                   <label>Assign to Maintenance Staff:</label>
                   <select
@@ -147,7 +147,7 @@ export default function ComplaintDetail({ complaint, staffList = [], currentRole
                 >
                   Assign Staff
                 </button>
-              </div>
+              </div>}
 
               {/* Status Update Controls */}
               <form onSubmit={handleStatusSubmit} className="status-update-form">

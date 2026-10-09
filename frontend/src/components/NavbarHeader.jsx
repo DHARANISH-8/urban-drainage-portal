@@ -3,7 +3,7 @@ import React from 'react';
 export default function NavbarHeader({
   currentUser,
   currentRole,
-  onRoleChange,
+  onLogout,
   unreadNotificationsCount,
   onOpenNotifications,
   themeMode,
@@ -37,31 +37,6 @@ export default function NavbarHeader({
           {themeMode === 'night' ? '🌙 Night theme' : '☀️ Day theme'}
         </button>
 
-        <div className="role-switcher" title="Switch workspace role">
-          <span className="switcher-label">Workspace:</span>
-          <button
-            type="button"
-            className={`role-btn ${currentRole === 'CITIZEN' ? 'active' : ''}`}
-            onClick={() => onRoleChange('CITIZEN')}
-          >
-            Citizen
-          </button>
-          <button
-            type="button"
-            className={`role-btn ${currentRole === 'STAFF' ? 'active' : ''}`}
-            onClick={() => onRoleChange('STAFF')}
-          >
-            Staff
-          </button>
-          <button
-            type="button"
-            className={`role-btn ${currentRole === 'ADMIN' ? 'active' : ''}`}
-            onClick={() => onRoleChange('ADMIN')}
-          >
-            Admin
-          </button>
-        </div>
-
         <div className="date-pill">{currentDateStr}</div>
 
         <button 
@@ -85,6 +60,7 @@ export default function NavbarHeader({
             <span className="user-role-badge">{currentRole}</span>
           </div>
         </div>
+        <button type="button" className="logout-btn" onClick={onLogout}>Sign out</button>
       </div>
     </header>
   );

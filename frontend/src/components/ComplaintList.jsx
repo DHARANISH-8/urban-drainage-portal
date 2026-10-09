@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 
-export default function ComplaintList({ complaints = [], staffList = [], currentRole, onSelectComplaint, filterMode }) {
+export default function ComplaintList({ complaints = [], staffList = [], currentRole, currentUser, onSelectComplaint, filterMode }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [priorityFilter, setPriorityFilter] = useState('ALL');
 
   const filteredComplaints = complaints.filter((c) => {
     // Mode filters
-    if (filterMode === 'MY_COMPLAINTS' && c.userId !== 1) return false; // assuming Citizen ID 1
-    if (filterMode === 'ASSIGNED_TO_ME' && c.assignedStaffId !== 2) return false; // assuming Staff ID 2
+    if (filterMode === 'MY_COMPLAINTS' && c.userId !== currentUser?.id) return false;
+    if (filterMode === 'ASSIGNED_TO_ME' && c.assignedStaffId !== currentUser?.id) return false;
     if (filterMode === 'EMERGENCY' && c.priority !== 'EMERGENCY') return false;
 
     // Search filter

@@ -6,6 +6,7 @@ import com.urbandrainage.portal.dto.DashboardStatsDTO;
 import com.urbandrainage.portal.dto.StatusUpdateDTO;
 import com.urbandrainage.portal.entity.DrainageComplaint;
 import com.urbandrainage.portal.service.ComplaintService;
+import com.urbandrainage.portal.security.AuthenticatedUser;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,7 +26,10 @@ public class ComplaintController {
     }
 
     @PostMapping
-    public ResponseEntity<DrainageComplaint> createComplaint(@Valid @RequestBody ComplaintRequestDTO dto) {
+    public ResponseEntity<DrainageComplaint> createComplaint(@Valid @RequestBody ComplaintRequestDTO dto,
+                                                               @RequestAttribute AuthenticatedUser authenticatedUser) {
+        // Reporter identity comes from the authenticated session, never from the browser payload.
+        dto = new ComplaintRequestDTO(authenticatedUser.id(), authenticatedUser.name(), dto.issueType(), dto.description(), dto.latitude(), dto.longitude(), dto.address(), dto.photoUrl(), dto.priority(), dto.drainId());
         DrainageComplaint created = complaintService.createComplaint(dto);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }

@@ -4,6 +4,7 @@ import com.urbandrainage.portal.dto.ComplaintRequestDTO;
 import com.urbandrainage.portal.dto.DashboardStatsDTO;
 import com.urbandrainage.portal.dto.StatusUpdateDTO;
 import com.urbandrainage.portal.entity.DrainageComplaint;
+import com.urbandrainage.portal.entity.DrainageInfrastructure;
 import com.urbandrainage.portal.repository.ComplaintRepository;
 import com.urbandrainage.portal.repository.InfrastructureRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -58,6 +59,30 @@ class ComplaintServiceTest {
         assertEquals(10L, result.getId());
         verify(complaintRepository, times(1)).save(any(DrainageComplaint.class));
         verify(notificationService, times(1)).createNotification(anyLong(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void createComplaintForDrain_shouldUseTheStoredDrainLocation() {
+        DrainageInfrastructure drain = new DrainageInfrastructure();
+        drain.setId(23L);
+        drain.setName("Main Road inlet");
+        drain.setLatitude(19.08);
+        drain.setLongitude(72.88);
+        drain.setAddress("Main Road, Ward 12");
+        ComplaintRequestDTO dto = new ComplaintRequestDTO(
+                1L, "John Doe", "BLOCKED_DRAIN", "Blocked inlet", 1.0, 1.0,
+                "Client supplied location", null, "HIGH", 23L
+        );
+        when(infrastructureRepository.findById(23L)).thenReturn(Optional.of(drain));
+        when(complaintRepository.save(any(DrainageComplaint.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DrainageComplaint saved = complaintService.createComplaint(dto);
+
+        assertSame(drain, saved.getDrain());
+        assertEquals(23L, saved.getDrainId());
+        assertEquals(19.08, saved.getLatitude());
+        assertEquals(72.88, saved.getLongitude());
+        assertEquals("Main Road, Ward 12", saved.getAddress());
     }
 
     @Test

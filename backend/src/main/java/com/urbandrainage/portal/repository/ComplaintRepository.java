@@ -13,6 +13,8 @@ public interface ComplaintRepository extends JpaRepository<DrainageComplaint, Lo
     List<DrainageComplaint> findByPriority(String priority);
     List<DrainageComplaint> findByStatus(String status);
     List<DrainageComplaint> findAllByOrderByCreatedAtDesc();
+    List<DrainageComplaint> findByDrain_IdInOrderByCreatedAtDesc(List<Long> drainIds);
+    List<DrainageComplaint> findByDrain_IdOrderByCreatedAtDesc(Long drainId);
     long countByStatus(String status);
     long countByPriority(String priority);
 }

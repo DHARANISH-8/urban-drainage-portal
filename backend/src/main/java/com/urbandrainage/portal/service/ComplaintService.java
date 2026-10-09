@@ -4,12 +4,14 @@ import com.urbandrainage.portal.dto.ComplaintRequestDTO;
 import com.urbandrainage.portal.dto.DashboardStatsDTO;
 import com.urbandrainage.portal.dto.StatusUpdateDTO;
 import com.urbandrainage.portal.entity.DrainageComplaint;
+import com.urbandrainage.portal.entity.DrainageInfrastructure;
 import com.urbandrainage.portal.repository.ComplaintRepository;
 import com.urbandrainage.portal.repository.InfrastructureRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
+import java.time.LocalDateTime;
 
 @Service
 public class ComplaintService {
@@ -27,14 +29,27 @@ public class ComplaintService {
     }
 
     public DrainageComplaint createComplaint(ComplaintRequestDTO dto) {
+        return createComplaint(dto, dto.drainId());
+    }
+
+    public DrainageComplaint createComplaint(ComplaintRequestDTO dto, Long drainId) {
         DrainageComplaint complaint = new DrainageComplaint();
         complaint.setUserId(dto.userId() != null ? dto.userId() : 1L);
         complaint.setUserName(dto.userName() != null ? dto.userName() : "Citizen User");
         complaint.setIssueType(dto.issueType());
         complaint.setDescription(dto.description());
-        complaint.setLatitude(dto.latitude());
-        complaint.setLongitude(dto.longitude());
-        complaint.setAddress(dto.address() != null ? dto.address() : "Reported Location");
+        if (drainId != null) {
+            DrainageInfrastructure drain = infrastructureRepository.findById(drainId)
+                    .orElseThrow(() -> new IllegalArgumentException("Drain not found with ID: " + drainId));
+            complaint.setDrain(drain);
+            complaint.setLatitude(drain.getLatitude());
+            complaint.setLongitude(drain.getLongitude());
+            complaint.setAddress(drain.getAddress() != null ? drain.getAddress() : drain.getName());
+        } else {
+            complaint.setLatitude(dto.latitude());
+            complaint.setLongitude(dto.longitude());
+            complaint.setAddress(dto.address() != null ? dto.address() : "Reported Location");
+        }
         complaint.setPhotoUrl(dto.photoUrl());
         complaint.setPriority(autoMapPriority(dto.issueType(), dto.priority()));
         complaint.setStatus("SUBMITTED");
@@ -106,6 +121,13 @@ public class ComplaintService {
         }
 
         DrainageComplaint updated = complaintRepository.save(complaint);
+
+        if (!"RESOLVED".equalsIgnoreCase(oldStatus) && "RESOLVED".equalsIgnoreCase(updated.getStatus())
+                && updated.getDrain() != null) {
+            DrainageInfrastructure drain = updated.getDrain();
+            drain.setLastMaintenanceAt(LocalDateTime.now());
+            infrastructureRepository.save(drain);
+        }
 
         // Notify user if status changed
         if (!oldStatus.equalsIgnoreCase(updated.getStatus())) {

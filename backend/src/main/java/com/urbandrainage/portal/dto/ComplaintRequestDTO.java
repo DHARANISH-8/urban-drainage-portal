@@ -23,5 +23,11 @@ public record ComplaintRequestDTO(
     String photoUrl,
 
     @NotBlank(message = "Priority is required")
-    String priority
-) {}
+    String priority,
+    Long drainId
+) {
+    public ComplaintRequestDTO(Long userId, String userName, String issueType, String description,
+                               Double latitude, Double longitude, String address, String photoUrl, String priority) {
+        this(userId, userName, issueType, description, latitude, longitude, address, photoUrl, priority, null);
+    }
+}

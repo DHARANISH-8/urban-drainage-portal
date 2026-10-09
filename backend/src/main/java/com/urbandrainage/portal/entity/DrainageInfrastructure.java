@@ -14,6 +14,9 @@ public class DrainageInfrastructure {
     @Column(nullable = false)
     private String name;
 
+    @Column(unique = true, length = 24)
+    private String drainCode;
+
     @Column(nullable = false)
     private String type; // STORM_DRAIN, DRAINAGE_CHANNEL, OUTLET, CULVERT, MANHOLE, PUMPING_STATION
 
@@ -34,6 +37,8 @@ public class DrainageInfrastructure {
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
+
+    private LocalDateTime lastMaintenanceAt;
 
     public DrainageInfrastructure() {}
 
@@ -58,6 +63,9 @@ public class DrainageInfrastructure {
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
 
+    public String getDrainCode() { return drainCode; }
+    public void setDrainCode(String drainCode) { this.drainCode = drainCode; }
+
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
 
@@ -81,4 +89,7 @@ public class DrainageInfrastructure {
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    public LocalDateTime getLastMaintenanceAt() { return lastMaintenanceAt; }
+    public void setLastMaintenanceAt(LocalDateTime lastMaintenanceAt) { this.lastMaintenanceAt = lastMaintenanceAt; }
 }

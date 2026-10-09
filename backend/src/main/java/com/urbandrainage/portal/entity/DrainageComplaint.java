@@ -1,6 +1,7 @@
 package com.urbandrainage.portal.entity;
 
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.time.LocalDateTime;
 
 @Entity
@@ -13,6 +14,11 @@ public class DrainageComplaint {
 
     @Column(nullable = false)
     private Long userId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "drain_id")
+    @JsonIgnore
+    private DrainageInfrastructure drain;
 
     private String userName;
 
@@ -86,6 +92,10 @@ public class DrainageComplaint {
 
     public Long getUserId() { return userId; }
     public void setUserId(Long userId) { this.userId = userId; }
+
+    public DrainageInfrastructure getDrain() { return drain; }
+    public void setDrain(DrainageInfrastructure drain) { this.drain = drain; }
+    public Long getDrainId() { return drain == null ? null : drain.getId(); }
 
     public String getUserName() { return userName; }
     public void setUserName(String userName) { this.userName = userName; }

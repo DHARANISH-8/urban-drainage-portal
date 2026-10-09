@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { authorizedFetch } from '../api';
 
 const ISSUE_TYPES = [
   { value: 'BLOCKED_DRAIN', label: 'Blocked Drain' },
@@ -61,13 +62,13 @@ const projectFromLatLng = (latitude, longitude) => {
   };
 };
 
-export default function ReportIssue({ currentUser, onSubmitSuccess }) {
+export default function ReportIssue({ currentUser, token, selectedDrain, onSubmitSuccess }) {
   const [formData, setFormData] = useState({
     issueType: 'BLOCKED_DRAIN',
     description: '',
-    latitude: 19.076,
-    longitude: 72.8777,
-    address: 'Greely Valley, Sector 4, City Zone',
+    latitude: selectedDrain?.latitude ?? 19.076,
+    longitude: selectedDrain?.longitude ?? 72.8777,
+    address: selectedDrain?.location || 'Greely Valley, Sector 4, City Zone',
     photoUrl: '',
     priority: AUTOMATIC_PRIORITY_MAP['BLOCKED_DRAIN'],
   });
@@ -77,6 +78,16 @@ export default function ReportIssue({ currentUser, onSubmitSuccess }) {
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  useEffect(() => {
+    if (!selectedDrain) return;
+    setFormData((previous) => ({
+      ...previous,
+      latitude: selectedDrain.latitude,
+      longitude: selectedDrain.longitude,
+      address: selectedDrain.location || selectedDrain.name,
+    }));
+  }, [selectedDrain]);
 
   const markerPosition = useMemo(() => projectFromLatLng(formData.latitude, formData.longitude), [formData.latitude, formData.longitude]);
 
@@ -169,14 +180,19 @@ export default function ReportIssue({ currentUser, onSubmitSuccess }) {
       address: formData.address,
       photoUrl: formData.photoUrl || null,
       priority: formData.priority,
+      drainId: selectedDrain?.id || null,
     };
 
     try {
-      const response = await fetch('/api/complaints', {
+      const response = await authorizedFetch(
+        selectedDrain ? `/api/drains/${selectedDrain.id}/complaints` : '/api/complaints',
+        token,
+        {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      });
+        }
+      );
 
       if (!response.ok) {
         throw new Error('Failed to submit complaint.');
@@ -253,6 +269,14 @@ export default function ReportIssue({ currentUser, onSubmitSuccess }) {
 
         <div className="location-section">
           <label className="section-label">📍 Complaint Location *</label>
+          {selectedDrain ? (
+            <div className="selected-drain-association">
+              <span>Selected drain</span>
+              <strong>{selectedDrain.drainCode} · {selectedDrain.name}</strong>
+              <p>{selectedDrain.location || 'Location not recorded'}</p>
+              <small>The complaint will be saved to this drain automatically.</small>
+            </div>
+          ) : <>
           <div className="location-tabs">
             <button type="button" className={`location-tab-btn ${locationMode === 'CURRENT' ? 'active' : ''}`} onClick={() => setLocationMode('CURRENT')}>
               🌐 Use My Current Location
@@ -316,6 +340,7 @@ export default function ReportIssue({ currentUser, onSubmitSuccess }) {
               <input type="text" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} required />
             </div>
           </div>
+          </>}
         </div>
 
         <div className="form-group">
